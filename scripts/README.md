@@ -131,6 +131,44 @@ scripts/git_codex_commit.sh -m "docs: update README"
 scripts/git_codex_commit.sh --amend --no-edit
 ```
 
+## Daily Workflow (Commit + PR as Codex)
+
+This is the normal end-to-end workflow to make a change, commit it as `Codex`, and create a pull request using the GitHub App identity.
+
+1. Create a feature branch:
+
+```bash
+git checkout -b codex/my-change
+```
+
+2. Make your file changes and stage them:
+
+```bash
+git add <files>
+```
+
+3. Commit as `Codex` (without changing Git config):
+
+```bash
+scripts/git_codex_commit.sh -m "feat: my change"
+```
+
+4. Push the branch (uses your normal SSH Git auth):
+
+```bash
+git push -u origin codex/my-change
+```
+
+5. Create the pull request as the GitHub App identity:
+
+```bash
+scripts/gh_app_token.sh --gh pr create \
+  --base main \
+  --head codex/my-change \
+  --title "feat: my change" \
+  --body "Describe the change."
+```
+
 ### Security notes
 
 - GitHub App installation tokens are short-lived.
