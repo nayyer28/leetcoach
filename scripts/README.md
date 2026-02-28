@@ -2,21 +2,21 @@
 
 This folder contains local developer helper scripts for the `leetcoach` repository.
 
-## Local Codex Config
+## Local Bot Config
 
-Use a repo-local `.codex.local.env` file (ignored by Git) for Codex-specific tooling configuration so values do not need to be remembered in chat context.
+Use a repo-local `.bot.local.env` file (ignored by Git) for bot-specific tooling configuration so values do not need to be remembered in chat context.
 
 Bootstrap from the committed template:
 
 ```bash
-cp .codex.local.env.example .codex.local.env
+cp .bot.local.env.example .bot.local.env
 ```
 
 Recommended variables:
 
 ```env
-CODEX_GIT_NAME=Codex
-CODEX_GIT_EMAIL=codex@local.invalid
+BOT_GIT_NAME=Code Assist Bot
+BOT_GIT_EMAIL=bot@local.invalid
 DEFAULT_PR_BASE=main
 GITHUB_APP_ID=...
 GITHUB_APP_INSTALLATION_ID=...
@@ -24,19 +24,19 @@ GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/app.private-key.pem
 ```
 
 Notes:
-- `.codex.local.env` is for local developer/tooling values.
+- `.bot.local.env` is for local developer/tooling values.
 - `.env` can still be used for project runtime configuration (Telegram token, DB settings, etc.).
-- `scripts/gh_app_token.sh` loads `.codex.local.env` first, then `.env` as a fallback.
+- `scripts/gh_app_token.sh` loads `.bot.local.env` first, then `.env` as a fallback.
 
 ## `gh_app_token.sh`
 
 `scripts/gh_app_token.sh` mints a short-lived GitHub App installation token and uses it with the GitHub CLI (`gh`).
 
-This is used so pull requests can be created by the GitHub App identity (for example, `Codex Bot`) instead of the repository owner's personal GitHub account.
+This is used so pull requests can be created by the GitHub App identity (for example, `Code Assist Bot`) instead of the repository owner's personal GitHub account.
 
 ### What it does
 
-1. Loads GitHub App config from `.codex.local.env` first, then `.env` as a fallback.
+1. Loads GitHub App config from `.bot.local.env` first, then `.env` as a fallback.
 2. Creates a signed JWT using the GitHub App private key (`.pem`).
 3. Exchanges that JWT for a short-lived installation access token from GitHub.
 4. Either:
@@ -45,7 +45,7 @@ This is used so pull requests can be created by the GitHub App identity (for exa
 
 ### Required local configuration
 
-Create a repo-local `.codex.local.env` file (already ignored by `.gitignore`) with:
+Create a repo-local `.bot.local.env` file (already ignored by `.gitignore`) with:
 
 ```env
 GITHUB_APP_ID=...
@@ -54,7 +54,7 @@ GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/app.private-key.pem
 ```
 
 Notes:
-- Do not commit `.codex.local.env`.
+- Do not commit `.bot.local.env`.
 - The `.pem` private key should live outside the repo or in a protected local path.
 
 ### Prerequisites
@@ -91,7 +91,7 @@ Run a `gh` command directly as the GitHub App installation:
 ```bash
 scripts/gh_app_token.sh --gh pr create \
   --base main \
-  --head codex/my-branch \
+  --head feature/my-branch \
   --title "..." \
   --body "..."
 ```
@@ -101,7 +101,7 @@ scripts/gh_app_token.sh --gh pr create \
 There are three separate identities in the workflow:
 
 - `git commit` author identity:
-  - set with one-off flags (for example `Codex <codex@local.invalid>`)
+  - set with one-off flags (for example `Code Assist Bot <bot@local.invalid>`)
 - `git push` auth:
   - usually your machine's SSH key
 - `gh` API identity (PR creator):
@@ -109,36 +109,36 @@ There are three separate identities in the workflow:
 
 This script only affects the third one (`gh` API identity).
 
-## `git_codex_commit.sh`
+## `git_bot_commit.sh`
 
-`scripts/git_codex_commit.sh` wraps `git commit` using one-off `user.name` / `user.email` flags so repository/global Git config is not modified.
+`scripts/git_bot_commit.sh` wraps `git commit` using one-off `user.name` / `user.email` flags so repository/global Git config is not modified.
 
-It reads these values from `.codex.local.env` (or falls back to defaults):
+It reads these values from `.bot.local.env` (or falls back to defaults):
 
 ```env
-CODEX_GIT_NAME=Codex
-CODEX_GIT_EMAIL=codex@local.invalid
+BOT_GIT_NAME=Code Assist Bot
+BOT_GIT_EMAIL=bot@local.invalid
 ```
 
 Examples:
 
 ```bash
 git add README.md
-scripts/git_codex_commit.sh -m "docs: update README"
+scripts/git_bot_commit.sh -m "docs: update README"
 ```
 
 ```bash
-scripts/git_codex_commit.sh --amend --no-edit
+scripts/git_bot_commit.sh --amend --no-edit
 ```
 
-## Daily Workflow (Commit + PR as Codex)
+## Daily Workflow (Commit + PR as Bot)
 
-This is the normal end-to-end workflow to make a change, commit it as `Codex`, and create a pull request using the GitHub App identity.
+This is the normal end-to-end workflow to make a change, commit it as `Code Assist Bot`, and create a pull request using the GitHub App identity.
 
 1. Create a feature branch:
 
 ```bash
-git checkout -b codex/my-change
+git checkout -b feature/my-change
 ```
 
 2. Make your file changes and stage them:
@@ -147,16 +147,16 @@ git checkout -b codex/my-change
 git add <files>
 ```
 
-3. Commit as `Codex` (without changing Git config):
+3. Commit as `Code Assist Bot` (without changing Git config):
 
 ```bash
-scripts/git_codex_commit.sh -m "feat: my change"
+scripts/git_bot_commit.sh -m "feat: my change"
 ```
 
 4. Push the branch (uses your normal SSH Git auth):
 
 ```bash
-git push -u origin codex/my-change
+git push -u origin feature/my-change
 ```
 
 5. Create the pull request as the GitHub App identity:
@@ -164,7 +164,7 @@ git push -u origin codex/my-change
 ```bash
 scripts/gh_app_token.sh --gh pr create \
   --base main \
-  --head codex/my-change \
+  --head feature/my-change \
   --title "feat: my change" \
   --body "Describe the change."
 ```

@@ -2,13 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CODEX_ENV_FILE="${ROOT_DIR}/.codex.local.env"
+BOT_ENV_FILE="${ROOT_DIR}/.bot.local.env"
 ENV_FILE="${ROOT_DIR}/.env"
 
-if [[ -f "${CODEX_ENV_FILE}" ]]; then
+if [[ -f "${BOT_ENV_FILE}" ]]; then
   set -a
   # shellcheck source=/dev/null
-  source "${CODEX_ENV_FILE}"
+  source "${BOT_ENV_FILE}"
   set +a
 fi
 
@@ -87,8 +87,8 @@ Usage:
 
 Examples:
   eval "$(scripts/gh_app_token.sh --export)"
-  cp .codex.local.env.example .codex.local.env
-  scripts/gh_app_token.sh --gh pr create --base main --head codex/x --title "..." --body "..."
+  cp .bot.local.env.example .bot.local.env
+  scripts/gh_app_token.sh --gh pr create --base main --head feature/x --title "..." --body "..."
 EOF
 }
 
