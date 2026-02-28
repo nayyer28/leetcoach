@@ -61,6 +61,14 @@ erDiagram
     }
 ```
 
+Cardinality legend for Mermaid ER syntax:
+- `||` means exactly one
+- `o{` means zero or many
+
+Equivalent UML-style multiplicities:
+- `User 1 ----- 0..* Problem`
+- `Problem 1 ----- 0..* ProblemReview`
+
 ## Table Definitions
 
 ### `users`
