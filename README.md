@@ -9,4 +9,4 @@ Early setup phase. Current work includes GitHub workflow tooling for PR creation
 ## Developer Tooling
 
 - GitHub App token helper for `gh` CLI: [`scripts/README.md`](scripts/README.md)
-- Local Codex tooling config template: [`.codex.local.env.example`](.codex.local.env.example)
+- Local bot tooling config template: [`.bot.local.env.example`](.bot.local.env.example)
