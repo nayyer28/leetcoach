@@ -12,3 +12,13 @@ LeetCode prep assistant focused on logging solved problems, scheduling review re
 
 - GitHub App token helper for `gh` CLI: [`scripts/README.md`](scripts/README.md)
 - Local bot tooling config template: [`.bot.local.env.example`](.bot.local.env.example)
+
+## Python Environment
+
+Use a project-local virtual environment to avoid polluting the global Python installation.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python main.py
+```
