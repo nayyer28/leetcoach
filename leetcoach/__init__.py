@@ -1,0 +1,2 @@
+"""leetcoach application package."""
+
