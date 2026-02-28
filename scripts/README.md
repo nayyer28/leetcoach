@@ -15,8 +15,9 @@ cp .bot.local.env.example .bot.local.env
 Recommended variables:
 
 ```env
-BOT_GIT_NAME=Code Assist Bot
-BOT_GIT_EMAIL=bot@local.invalid
+# Use the actual bot name (Claude, Codex, etc.) to identify which assistant made commits
+BOT_GIT_NAME=Claude
+BOT_GIT_EMAIL=claude@anthropic.com
 DEFAULT_PR_BASE=main
 GITHUB_APP_ID=...
 GITHUB_APP_INSTALLATION_ID=...
@@ -101,7 +102,8 @@ scripts/gh_app_token.sh --gh pr create \
 There are three separate identities in the workflow:
 
 - `git commit` author identity:
-  - set with one-off flags (for example `Code Assist Bot <bot@local.invalid>`)
+  - set with one-off flags (for example `Claude <claude@anthropic.com>`)
+  - use the actual bot name for proper attribution
 - `git push` auth:
   - usually your machine's SSH key
 - `gh` API identity (PR creator):
@@ -116,8 +118,8 @@ This script only affects the third one (`gh` API identity).
 It reads these values from `.bot.local.env` (or falls back to defaults):
 
 ```env
-BOT_GIT_NAME=Code Assist Bot
-BOT_GIT_EMAIL=bot@local.invalid
+BOT_GIT_NAME=Claude  # Use actual bot name (Claude, Codex, etc.) for commit attribution
+BOT_GIT_EMAIL=claude@anthropic.com
 ```
 
 Examples:
@@ -133,7 +135,7 @@ scripts/git_bot_commit.sh --amend --no-edit
 
 ## Daily Workflow (Commit + PR as Bot)
 
-This is the normal end-to-end workflow to make a change, commit it as `Code Assist Bot`, and create a pull request using the GitHub App identity.
+This is the normal end-to-end workflow to make a change, commit it with bot identity (e.g., `Claude`), and create a pull request using the GitHub App identity.
 
 1. Create a feature branch:
 
@@ -147,7 +149,7 @@ git checkout -b feature/my-change
 git add <files>
 ```
 
-3. Commit as `Code Assist Bot` (without changing Git config):
+3. Commit with bot identity (without changing Git config):
 
 ```bash
 scripts/git_bot_commit.sh -m "feat: my change"
