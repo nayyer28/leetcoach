@@ -19,8 +19,9 @@ Deferred:
 
 ```mermaid
 erDiagram
-    USERS ||--o{ PROBLEMS : owns
-    PROBLEMS ||--o{ PROBLEM_REVIEWS : schedules
+    USERS ||--o{ USER_PROBLEMS : tracks
+    PROBLEMS ||--o{ USER_PROBLEMS : references
+    USER_PROBLEMS ||--o{ PROBLEM_REVIEWS : schedules
 
     USERS {
       int id PK
@@ -33,13 +34,21 @@ erDiagram
 
     PROBLEMS {
       int id PK
-      int user_id FK
+      text slug UK
       text title
       text difficulty
-      text pattern
-      text solved_at
       text leetcode_url
       text neetcode_url
+      text created_at
+      text updated_at
+    }
+
+    USER_PROBLEMS {
+      int id PK
+      int user_id FK
+      int problem_id FK
+      text pattern
+      text solved_at
       text concepts
       text time_complexity
       text space_complexity
@@ -50,7 +59,7 @@ erDiagram
 
     PROBLEM_REVIEWS {
       int id PK
-      int problem_id FK
+      int user_problem_id FK
       int review_day
       text due_at
       text buffer_until
@@ -66,8 +75,9 @@ Cardinality legend for Mermaid ER syntax:
 - `o{` means zero or many
 
 Equivalent UML-style multiplicities:
-- `User 1 ----- 0..* Problem`
-- `Problem 1 ----- 0..* ProblemReview`
+- `User 1 ----- 0..* UserProblem`
+- `Problem 1 ----- 0..* UserProblem`
+- `UserProblem 1 ----- 0..* ProblemReview`
 
 ## Table Definitions
 
@@ -88,18 +98,36 @@ Fields:
 ### `problems`
 
 Purpose:
-- canonical problem record
-- stores long-form preparation notes as plain text
+- global canonical problem definition
+- not tied to any specific user
+
+Fields:
+- `id` INTEGER PRIMARY KEY
+- `slug` TEXT NOT NULL UNIQUE
+- `title` TEXT NOT NULL
+- `difficulty` TEXT NOT NULL CHECK (`difficulty IN ('easy','medium','hard')`)
+- `leetcode_url` TEXT NULL
+- `neetcode_url` TEXT NULL
+- `created_at` TEXT NOT NULL
+- `updated_at` TEXT NOT NULL
+
+Constraints and indexes:
+- unique index on `leetcode_url` when present
+- unique index on `neetcode_url` when present
+- index on `title`
+
+### `user_problems`
+
+Purpose:
+- user-specific tracking record for a canonical problem
+- stores per-user prep notes and solve metadata
 
 Fields:
 - `id` INTEGER PRIMARY KEY
 - `user_id` INTEGER NOT NULL REFERENCES `users(id)` ON DELETE CASCADE
-- `title` TEXT NOT NULL
-- `difficulty` TEXT NOT NULL CHECK (`difficulty IN ('easy','medium','hard')`)
+- `problem_id` INTEGER NOT NULL REFERENCES `problems(id)` ON DELETE CASCADE
 - `pattern` TEXT NOT NULL
 - `solved_at` TEXT NOT NULL
-- `leetcode_url` TEXT NULL
-- `neetcode_url` TEXT NULL
 - `concepts` TEXT NULL
 - `time_complexity` TEXT NULL
 - `space_complexity` TEXT NULL
@@ -108,13 +136,9 @@ Fields:
 - `updated_at` TEXT NOT NULL
 
 Constraints and indexes:
-- unique per user on LeetCode URL when present
-  - unique index: (`user_id`, `leetcode_url`) where `leetcode_url` IS NOT NULL
-- unique per user on NeetCode URL when present
-  - unique index: (`user_id`, `neetcode_url`) where `neetcode_url` IS NOT NULL
+- unique index: (`user_id`, `problem_id`)
 - index: (`user_id`, `pattern`)
 - index: (`user_id`, `solved_at`)
-- optional index: (`user_id`, `title`)
 
 Notes:
 - `concepts`, `time_complexity`, `space_complexity`, and `notes` are plain `TEXT` and can store multiline markdown or plain text.
@@ -126,7 +150,7 @@ Purpose:
 
 Fields:
 - `id` INTEGER PRIMARY KEY
-- `problem_id` INTEGER NOT NULL REFERENCES `problems(id)` ON DELETE CASCADE
+- `user_problem_id` INTEGER NOT NULL REFERENCES `user_problems(id)` ON DELETE CASCADE
 - `review_day` INTEGER NOT NULL CHECK (`review_day IN (7, 21)`)
 - `due_at` TEXT NOT NULL
 - `buffer_until` TEXT NOT NULL
@@ -136,7 +160,7 @@ Fields:
 - `updated_at` TEXT NOT NULL
 
 Constraints and indexes:
-- unique index: (`problem_id`, `review_day`)
+- unique index: (`user_problem_id`, `review_day`)
 - index: (`due_at`)
 - index: (`buffer_until`)
 - index: (`completed_at`)
@@ -144,7 +168,9 @@ Constraints and indexes:
 ## Reminder and Status Rules
 
 When a problem is logged:
-- create two `problem_reviews` rows
+- create or reuse a canonical `problems` row
+- create or update `user_problems` row for that user/problem
+- create two `problem_reviews` rows for that `user_problems` row
   - day 7: `due_at = solved_at + 7d`, `buffer_until = due_at + 48h`
   - day 21: `due_at = solved_at + 21d`, `buffer_until = due_at + 48h`
 
@@ -161,34 +187,38 @@ Reminder policy:
 ## Command Contract (MVP)
 
 - `/log`
-  - creates/updates a canonical `problems` row for the user
-  - ensures day 7/day 21 review rows exist
+  - creates/reuses canonical row in `problems`
+  - creates/updates user row in `user_problems`
+  - ensures day 7/day 21 review rows exist in `problem_reviews`
 
 - `/due`
   - lists user checkpoints in `pending` or `overdue`
 
 - `/done <problem_id> <review_day>`
   - marks matching checkpoint complete (`completed_at = now`)
+  - implementation should resolve through `user_problem_id` to avoid cross-user ambiguity
 
 - `/search <query>`
-  - searches by title, pattern, and notes fields for the user
+  - searches user-linked rows by title, pattern, and notes
+  - title from `problems`; pattern/notes from `user_problems`
 
 - `/pattern <pattern_name>`
-  - lists user problems for that pattern
+  - lists user problems from `user_problems` by pattern
 
 ## Notion Mapping (Design Only)
 
-Expected mapping into `problems`:
+Expected mapping into `problems` + `user_problems`:
 - problem name -> `title`
 - difficulty -> `difficulty`
-- date solved -> `solved_at`
-- LeetCode link -> `leetcode_url`
-- NeetCode link -> `neetcode_url`
-- concept block -> `concepts`
-- time complexity block -> `time_complexity`
-- space complexity block -> `space_complexity`
-- extra notes -> `notes`
+- date solved -> `user_problems.solved_at`
+- LeetCode link -> `problems.leetcode_url`
+- NeetCode link -> `problems.neetcode_url`
+- concept block -> `user_problems.concepts`
+- time complexity block -> `user_problems.time_complexity`
+- space complexity block -> `user_problems.space_complexity`
+- extra notes -> `user_problems.notes`
 
 Importer behavior (future):
-- dedupe by per-user URL match when available
-- if no URL match, fallback to title review/manual confirmation
+- resolve canonical problem first by URL match when available
+- fallback to title/slug review when URL is missing
+- then upsert per-user row in `user_problems`
