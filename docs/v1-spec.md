@@ -34,11 +34,10 @@ erDiagram
 
     PROBLEMS {
       int id PK
-      text slug UK
       text title
       text difficulty
-      text leetcode_url
-      text neetcode_url
+      text leetcode_slug UK
+      text neetcode_slug UK
       text created_at
       text updated_at
     }
@@ -103,18 +102,21 @@ Purpose:
 
 Fields:
 - `id` INTEGER PRIMARY KEY
-- `slug` TEXT NOT NULL UNIQUE
 - `title` TEXT NOT NULL
 - `difficulty` TEXT NOT NULL CHECK (`difficulty IN ('easy','medium','hard')`)
-- `leetcode_url` TEXT NULL
-- `neetcode_url` TEXT NULL
+- `leetcode_slug` TEXT NOT NULL UNIQUE
+- `neetcode_slug` TEXT NULL UNIQUE
 - `created_at` TEXT NOT NULL
 - `updated_at` TEXT NOT NULL
 
 Constraints and indexes:
-- unique index on `leetcode_url` when present
-- unique index on `neetcode_url` when present
+- unique index on `leetcode_slug`
+- unique index on `neetcode_slug` when present
 - index on `title`
+
+URL construction (application layer, not DB):
+- LeetCode URL is constructed from `leetcode_slug`
+- NeetCode URL is constructed from `neetcode_slug` using NeetCode's path pattern
 
 ### `user_problems`
 
@@ -211,14 +213,14 @@ Expected mapping into `problems` + `user_problems`:
 - problem name -> `title`
 - difficulty -> `difficulty`
 - date solved -> `user_problems.solved_at`
-- LeetCode link -> `problems.leetcode_url`
-- NeetCode link -> `problems.neetcode_url`
+- LeetCode link path/slug -> `problems.leetcode_slug`
+- NeetCode link path/slug -> `problems.neetcode_slug`
 - concept block -> `user_problems.concepts`
 - time complexity block -> `user_problems.time_complexity`
 - space complexity block -> `user_problems.space_complexity`
 - extra notes -> `user_problems.notes`
 
 Importer behavior (future):
-- resolve canonical problem first by URL match when available
-- fallback to title/slug review when URL is missing
+- resolve canonical problem first by provider slug match when available
+- fallback to title review/manual confirmation when slug is missing
 - then upsert per-user row in `user_problems`
