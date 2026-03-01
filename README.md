@@ -22,3 +22,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 python main.py
 ```
+
+Apply database migrations:
+
+```bash
+source .venv/bin/activate
+python main.py migrate
+```
