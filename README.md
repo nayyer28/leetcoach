@@ -5,6 +5,7 @@ LeetCode prep assistant focused on logging solved problems, scheduling review re
 ## Project Docs
 
 - v1 data model and behavior specification: [`docs/v1-spec.md`](docs/v1-spec.md)
+- database migrations and local DB inspection: [`docs/db-quickstart.md`](docs/db-quickstart.md)
 - project status and next steps tracker: [`docs/project-tracker.md`](docs/project-tracker.md)
 - scripts usage and daily bot workflow: [`scripts/README.md`](scripts/README.md)
 
@@ -28,4 +29,11 @@ Apply database migrations:
 ```bash
 source .venv/bin/activate
 python main.py migrate
+```
+
+Inspect DB schema and data:
+
+```bash
+source .venv/bin/activate
+sqlite3 .local/leetcoach.db
 ```
