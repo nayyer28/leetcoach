@@ -1,5 +1,6 @@
 .env
 .bot.local.env
 .venv/
+.local/
 __pycache__/
 *.py[cod]
