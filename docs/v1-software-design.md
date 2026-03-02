@@ -42,27 +42,14 @@ No layer skips downward boundaries.
 - migrations define/upgrade schema
 - `schema_migrations` tracks applied migration files
 
-## CLI Entry Points
+## CLI Help
 
-Show CLI help:
+```text
+Usage:
+  python main.py [command]
 
-```bash
-source .venv/bin/activate
-python main.py --help
-```
-
-Run app bootstrap:
-- purpose: validates config/logging bootstrap and starts the app process entrypoint
-
-```bash
-source .venv/bin/activate
-python main.py
-```
-
-Apply database migrations:
-- purpose: creates/updates the SQLite schema from migration files and records versions in `schema_migrations`
-
-```bash
-source .venv/bin/activate
-python main.py migrate
+Commands:
+  run       Start app bootstrap (default command)
+  migrate   Apply DB migrations
+  --help    Show CLI help
 ```
