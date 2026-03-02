@@ -58,3 +58,9 @@ sqlite3 .local/leetcoach.db "SELECT version, applied_at FROM schema_migrations O
 ```
 
 For detailed DB commands, see [`docs/db-quickstart.md`](docs/db-quickstart.md).
+
+## Run Integration Tests
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
