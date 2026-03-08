@@ -73,7 +73,9 @@ def _format_timestamp_compact(iso_ts: str, timezone_name: str) -> str:
     return local_dt.strftime("%d %b %H:%M %Z")
 
 
-def _leetcode_url(leetcode_slug: str) -> str:
+def _leetcode_url(leetcode_slug: str | None) -> str | None:
+    if not leetcode_slug:
+        return None
     return f"https://leetcode.com/problems/{leetcode_slug}/description/"
 
 
@@ -233,20 +235,26 @@ async def log_difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return LOG_DIFFICULTY
     context.user_data["log_payload"]["difficulty"] = difficulty
     await update.message.reply_text(
-        _log_prompt(3, 10, "LeetCode slug? (example: maximum-depth-of-binary-tree)")
+        _log_prompt(3, 10, "LeetCode slug? (or '-' to skip)")
     )
     return LOG_LEETCODE_SLUG
 
 
 async def log_leetcode_slug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["log_payload"]["leetcode_slug"] = update.message.text.strip()
-    await update.message.reply_text(_log_prompt(4, 10, "NeetCode slug? (or '-' to skip)"))
+    text = update.message.text.strip()
+    context.user_data["log_payload"]["leetcode_slug"] = None if text == "-" else text
+    await update.message.reply_text(
+        _log_prompt(4, 10, "NeetCode slug? (example: maximum-depth-of-binary-tree)")
+    )
     return LOG_NEETCODE_SLUG
 
 
 async def log_neetcode_slug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = update.message.text.strip()
-    context.user_data["log_payload"]["neetcode_slug"] = None if text == "-" else text
+    if text == "-":
+        await update.message.reply_text("⚠️ NeetCode slug is required.")
+        return LOG_NEETCODE_SLUG
+    context.user_data["log_payload"]["neetcode_slug"] = text
     await update.message.reply_text(_log_prompt(5, 10, "Pattern? (example: sliding-window)"))
     return LOG_PATTERN
 
@@ -358,7 +366,9 @@ def _render_due(
                 f"{_format_timestamp_compact(item.due_at, timezone_name)}"
             )
         )
-        lines.append(f"   🔗 LC: {_leetcode_url(item.leetcode_slug)}")
+        leetcode = _leetcode_url(item.leetcode_slug)
+        if leetcode:
+            lines.append(f"   🔗 LC: {leetcode}")
         neetcode = _neetcode_url(item.neetcode_slug)
         if neetcode:
             lines.append(f"   🔗 NC: {neetcode}")
@@ -407,7 +417,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 def _render_problem_rows(rows: list[dict[str, str]], timezone_name: str) -> str:
     lines: list[str] = ["📚 Your Problems", ""]
     for idx, row in enumerate(rows, start=1):
-        leetcode_url = _leetcode_url(row["leetcode_slug"])
+        leetcode_url = _leetcode_url(row["leetcode_slug"] or None)
         neetcode_url = _neetcode_url(row["neetcode_slug"] or None)
         lines.append(f"{idx}. {row['title']}")
         lines.append(
@@ -416,7 +426,8 @@ def _render_problem_rows(rows: list[dict[str, str]], timezone_name: str) -> str:
                 f"{_format_timestamp_compact(row['solved_at'], timezone_name)}"
             )
         )
-        lines.append(f"   🔗 LC: {leetcode_url}")
+        if leetcode_url:
+            lines.append(f"   🔗 LC: {leetcode_url}")
         if neetcode_url:
             lines.append(f"   🔗 NC: {neetcode_url}")
     return "\n".join(lines)

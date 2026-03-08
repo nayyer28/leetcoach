@@ -26,6 +26,7 @@ Expected commands:
 - `migrate`
 - `test`
 - `bot`
+- `import-notion`
 
 ## Run App Bootstrap
 
@@ -154,6 +155,30 @@ Run a specific test target:
 ```bash
 python main.py test unit tests.unit.dao.test_problem_reviews_dao
 ```
+
+## Import From Notion
+
+Dry-run first (no DB writes):
+
+```bash
+python main.py import-notion \
+  --root-page-url "https://www.notion.so/NeetCode-150-2f25715dd0d080348fe1f65ac7c4cbae" \
+  --telegram-user-id "<your_telegram_user_id>"
+```
+
+Apply import:
+
+```bash
+python main.py import-notion \
+  --root-page-url "https://www.notion.so/NeetCode-150-2f25715dd0d080348fe1f65ac7c4cbae" \
+  --telegram-user-id "<your_telegram_user_id>" \
+  --apply
+```
+
+Notes:
+- requires a Notion token env var (default env key: `MCP_BEARER_TOKEN`)
+- parser expects the current numbered-list style in your NeetCode pattern pages
+- importer requires `neetcode_slug` for each parsed problem
 
 ## Troubleshooting
 

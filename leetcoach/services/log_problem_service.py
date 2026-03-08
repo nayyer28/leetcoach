@@ -17,8 +17,8 @@ class LogProblemInput:
     timezone: str
     title: str
     difficulty: str
-    leetcode_slug: str
-    neetcode_slug: str | None
+    leetcode_slug: str | None
+    neetcode_slug: str
     pattern: str
     solved_at: str
     concepts: str | None = None
@@ -76,4 +76,3 @@ def log_problem(db_path: str, payload: LogProblemInput) -> LogProblemResult:
         problem_id=problem_id,
         user_problem_id=user_problem_id,
     )
-

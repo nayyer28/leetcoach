@@ -18,7 +18,7 @@ class DueReviewItem:
     user_problem_id: int
     review_day: int
     title: str
-    leetcode_slug: str
+    leetcode_slug: str | None
     neetcode_slug: str | None
     due_at: str
     buffer_until: str
@@ -57,7 +57,9 @@ def list_due_reviews(db_path: str, telegram_user_id: str) -> list[DueReviewItem]
                 user_problem_id=int(row["user_problem_id"]),
                 review_day=int(row["review_day"]),
                 title=str(row["title"]),
-                leetcode_slug=str(row["leetcode_slug"]),
+                leetcode_slug=(
+                    str(row["leetcode_slug"]) if row["leetcode_slug"] else None
+                ),
                 neetcode_slug=(
                     str(row["neetcode_slug"]) if row["neetcode_slug"] else None
                 ),
@@ -105,7 +107,7 @@ def search_problems(db_path: str, telegram_user_id: str, query: str) -> list[dic
             "difficulty": str(r["difficulty"]),
             "pattern": str(r["pattern"]),
             "solved_at": str(r["solved_at"]),
-            "leetcode_slug": str(r["leetcode_slug"]),
+            "leetcode_slug": str(r["leetcode_slug"]) if r["leetcode_slug"] else "",
             "neetcode_slug": str(r["neetcode_slug"]) if r["neetcode_slug"] else "",
         }
         for r in rows
@@ -128,7 +130,7 @@ def list_by_pattern(
             "difficulty": str(r["difficulty"]),
             "pattern": str(r["pattern"]),
             "solved_at": str(r["solved_at"]),
-            "leetcode_slug": str(r["leetcode_slug"]),
+            "leetcode_slug": str(r["leetcode_slug"]) if r["leetcode_slug"] else "",
             "neetcode_slug": str(r["neetcode_slug"]) if r["neetcode_slug"] else "",
         }
         for r in rows
@@ -149,7 +151,7 @@ def list_all_problems(db_path: str, telegram_user_id: str) -> list[dict[str, str
             "difficulty": str(r["difficulty"]),
             "pattern": str(r["pattern"]),
             "solved_at": str(r["solved_at"]),
-            "leetcode_slug": str(r["leetcode_slug"]),
+            "leetcode_slug": str(r["leetcode_slug"]) if r["leetcode_slug"] else "",
             "neetcode_slug": str(r["neetcode_slug"]) if r["neetcode_slug"] else "",
         }
         for r in rows
