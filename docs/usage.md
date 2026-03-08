@@ -12,14 +12,6 @@ source .venv/bin/activate
 python -m pip install -e .
 ```
 
-## What "v1" means
-
-`v1` refers to the first MVP phase of leetcoach:
-- log problems
-- retrieve/search/pattern listing
-- due/complete review checkpoints
-- schema and command foundations
-
 ## CLI Help
 
 ```bash
@@ -84,34 +76,8 @@ In Telegram:
 
 This registers your Telegram user/chat in the local database.
 
-## Telegram Command Reference
-
-- `/start`
-  - registers/updates user record for this chat
-
-- `/log`
-  - guided flow that asks for:
-    - title
-    - difficulty
-    - leetcode slug
-    - neetcode slug (optional via `-`)
-    - pattern
-    - solved timestamp (`now` or ISO)
-    - concepts/time complexity/space complexity/notes (optional via `-`)
-
-- `/due`
-  - lists due review checkpoints with short tokens (example: `A1`, `A2`)
-
-- `/done <token>`
-  - marks a due checkpoint complete
-  - example: `/done A1`
-  - token comes from latest `/due` output
-
-- `/search <query>`
-  - searches title/pattern/notes/concepts
-
-- `/pattern <pattern>`
-  - lists problems for a specific pattern
+Telegram command details (input/behavior/examples) are defined in:
+- [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
 
 ## Inspect Database
 
@@ -143,3 +109,15 @@ sqlite3 .local/leetcoach.db "SELECT name, tbl_name FROM sqlite_master WHERE type
 ```bash
 python main.py test
 ```
+
+## Troubleshooting
+
+- `ModuleNotFoundError: click` or Telegram imports missing
+  - re-run: `python -m pip install -e .`
+
+- migration command runs but DB not where expected
+  - check `LEETCOACH_DB_PATH`
+  - default is `.local/leetcoach.db`
+
+- `/done <token>` says unknown/expired token
+  - run `/due` again to refresh short tokens
