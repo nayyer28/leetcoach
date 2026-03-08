@@ -7,7 +7,6 @@ LeetCode prep assistant focused on logging solved problems, scheduling review re
 - usage guide (CLI + migrations): [`docs/usage.md`](docs/usage.md)
 - v1 data model and behavior specification: [`docs/v1-spec.md`](docs/v1-spec.md)
 - v1 software design and module architecture: [`docs/v1-software-design.md`](docs/v1-software-design.md)
-- database migrations and local DB inspection: [`docs/db-quickstart.md`](docs/db-quickstart.md)
 - project status and next steps tracker: [`docs/project-tracker.md`](docs/project-tracker.md)
 - scripts usage and daily bot workflow: [`scripts/README.md`](scripts/README.md)
 
