@@ -157,3 +157,10 @@ python main.py test unit tests.unit.dao.test_problem_reviews_dao
 
 - `/done <token>` says unknown/expired token
   - run `/due` again to refresh short tokens
+
+- `telegram.error.Conflict: terminated by other getUpdates request`
+  - only one long-polling bot process can run per bot token
+  - stop other instances first, then restart this one
+  - example process cleanup:
+    - `pgrep -af "python.*main.py bot"`
+    - `pkill -f "python.*main.py bot"`

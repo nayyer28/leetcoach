@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from telegram import Update
 from telegram.constants import ParseMode
+from telegram.error import Conflict
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -451,6 +452,19 @@ async def default_text_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> 
     )
 
 
+async def app_error_handler(_: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    error = context.error
+    if isinstance(error, Conflict):
+        LOGGER.error(
+            "Telegram polling conflict: another bot instance is already running "
+            "for this token. Stopping this instance."
+        )
+        context.application.stop_running()
+        return
+    if error is not None:
+        LOGGER.exception("Unhandled Telegram error", exc_info=error)
+
+
 def build_application(config: AppConfig) -> Application:
     if not config.telegram_bot_token:
         raise RuntimeError("LEETCOACH_TELEGRAM_BOT_TOKEN is not configured")
@@ -494,11 +508,19 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(CommandHandler("pattern", pattern_command))
     app.add_handler(CommandHandler("list", list_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, default_text_command))
+    app.add_error_handler(app_error_handler)
     return app
 
 
 def run_bot(config: AppConfig) -> int:
     application = build_application(config)
     LOGGER.info("Starting Telegram bot polling")
-    application.run_polling(close_loop=False)
+    try:
+        application.run_polling(close_loop=False, bootstrap_retries=0)
+    except Conflict:
+        LOGGER.error(
+            "Telegram polling conflict at startup. Ensure only one bot process "
+            "is running for this token."
+        )
+        return 1
     return 0
