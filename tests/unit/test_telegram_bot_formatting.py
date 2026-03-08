@@ -6,6 +6,8 @@ from leetcoach.services.due_tokens import ReviewToken
 from leetcoach.services.query_service import DueReviewItem
 from leetcoach.telegram_bot import (
     _format_timestamp,
+    _leetcode_url,
+    _neetcode_url,
     _normalize_solved_at,
     _render_due,
     _render_problem_rows,
@@ -26,6 +28,17 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         value = _normalize_solved_at("not-a-date", "Europe/Berlin")
         self.assertIsNone(value)
 
+    def test_problem_url_builders_from_slug(self) -> None:
+        self.assertEqual(
+            _leetcode_url("validate-binary-search-tree"),
+            "https://leetcode.com/problems/validate-binary-search-tree/description/",
+        )
+        self.assertEqual(
+            _neetcode_url("valid-binary-search-tree"),
+            "https://neetcode.io/problems/valid-binary-search-tree/question",
+        )
+        self.assertIsNone(_neetcode_url(None))
+
     def test_render_problem_rows_includes_header_and_human_time(self) -> None:
         rows = [
             {
@@ -44,6 +57,14 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertIn("Medium", text)
         self.assertIn("Trees", text)
         self.assertIn("08 Mar 14:28 CET", text)
+        self.assertIn(
+            "https://leetcode.com/problems/validate-binary-search-tree/description/",
+            text,
+        )
+        self.assertIn(
+            "https://neetcode.io/problems/valid-binary-search-tree/question",
+            text,
+        )
 
     def test_render_due_includes_header_token_and_human_time(self) -> None:
         items = [
@@ -65,6 +86,14 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertIn("[A1]", text)
         self.assertIn("PENDING", text)
         self.assertIn("15 Mar 14:28 CET", text)
+        self.assertIn(
+            "https://leetcode.com/problems/validate-binary-search-tree/description/",
+            text,
+        )
+        self.assertIn(
+            "https://neetcode.io/problems/valid-binary-search-tree/question",
+            text,
+        )
 
 
 if __name__ == "__main__":
