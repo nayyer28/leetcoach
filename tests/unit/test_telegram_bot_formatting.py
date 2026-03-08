@@ -6,6 +6,7 @@ from leetcoach.config import AppConfig
 from leetcoach.services.due_tokens import ReviewToken
 from leetcoach.services.query_service import DueReviewItem
 from leetcoach.telegram_bot import (
+    _chunk_text,
     _format_timestamp,
     _is_user_allowed,
     _leetcode_url,
@@ -17,6 +18,12 @@ from leetcoach.telegram_bot import (
 
 
 class TelegramBotFormattingUnitTest(unittest.TestCase):
+    def test_chunk_text_splits_long_message(self) -> None:
+        text = ("line-1234567890\n" * 1000).strip()
+        chunks = _chunk_text(text, chunk_size=500)
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(len(chunk) <= 500 for chunk in chunks))
+
     def test_format_timestamp_uses_timezone(self) -> None:
         value = _format_timestamp("2026-03-08T13:28:44+00:00", "Europe/Berlin")
         self.assertIn("08 Mar 2026, 14:28", value)
