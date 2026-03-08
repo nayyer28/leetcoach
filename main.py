@@ -7,12 +7,14 @@ import sys
 from leetcoach.app import run
 from leetcoach.config import load_config
 from leetcoach.db.migrate import migrate_database
+from leetcoach.env import load_environment
 
 
 @click.group(invoke_without_command=True, help="Leetcoach CLI")
 @click.pass_context
 def cli(ctx: click.Context) -> None:
     """CLI entrypoint."""
+    load_environment()
     if ctx.invoked_subcommand is None:
         raise SystemExit(run())
 
