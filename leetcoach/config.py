@@ -10,6 +10,7 @@ class AppConfig:
     log_level: str
     timezone: str
     db_path: str
+    telegram_bot_token: str | None
 
 
 def load_config() -> AppConfig:
@@ -18,4 +19,5 @@ def load_config() -> AppConfig:
         log_level=os.getenv("LEETCOACH_LOG_LEVEL", "INFO"),
         timezone=os.getenv("LEETCOACH_TIMEZONE", "UTC"),
         db_path=os.getenv("LEETCOACH_DB_PATH", ".local/leetcoach.db"),
+        telegram_bot_token=os.getenv("LEETCOACH_TELEGRAM_BOT_TOKEN"),
     )

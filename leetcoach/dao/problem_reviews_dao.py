@@ -44,3 +44,55 @@ def ensure_review_checkpoints(
             (user_problem_id, review_day, due_at, buffer_until, now_iso, now_iso),
         )
 
+
+def list_due_reviews_for_user(
+    conn: sqlite3.Connection, *, user_id: int, now_iso: str
+) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT
+            pr.user_problem_id,
+            pr.review_day,
+            pr.due_at,
+            pr.buffer_until,
+            pr.completed_at,
+            p.title,
+            p.leetcode_slug,
+            p.neetcode_slug
+        FROM problem_reviews pr
+        JOIN user_problems up ON up.id = pr.user_problem_id
+        JOIN problems p ON p.id = up.problem_id
+        WHERE up.user_id = ?
+          AND pr.completed_at IS NULL
+          AND pr.due_at <= ?
+        ORDER BY pr.due_at ASC
+        """,
+        (user_id, now_iso),
+    ).fetchall()
+
+
+def mark_review_done(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    user_problem_id: int,
+    review_day: int,
+    completed_at: str,
+) -> bool:
+    cur = conn.execute(
+        """
+        UPDATE problem_reviews
+        SET completed_at = ?, updated_at = ?
+        WHERE user_problem_id = ?
+          AND review_day = ?
+          AND completed_at IS NULL
+          AND EXISTS (
+            SELECT 1
+            FROM user_problems up
+            WHERE up.id = problem_reviews.user_problem_id
+              AND up.user_id = ?
+          )
+        """,
+        (completed_at, completed_at, user_problem_id, review_day, user_id),
+    )
+    return cur.rowcount > 0

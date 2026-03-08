@@ -22,6 +22,7 @@ Expected commands:
 - `run` (default when no subcommand is passed)
 - `migrate`
 - `test`
+- `bot`
 
 ## Run App Bootstrap
 
@@ -42,6 +43,20 @@ python main.py migrate
 ```
 
 This applies any pending SQL files from `migrations/` and records them in `schema_migrations`.
+
+## Run Telegram Bot (Long Polling)
+
+Set bot token:
+
+```bash
+export LEETCOACH_TELEGRAM_BOT_TOKEN="<your-token>"
+```
+
+Start bot:
+
+```bash
+python main.py bot
+```
 
 ## Inspect Database
 
