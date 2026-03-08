@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from collections.abc import Callable
 import json
 import os
 import re
@@ -65,8 +66,9 @@ def _extract_page_id(page_url: str) -> str:
 
 
 class NotionApiClient:
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, *, timeout_seconds: int = 30) -> None:
         self._token = token
+        self._timeout_seconds = timeout_seconds
 
     def _get_json(self, url: str) -> dict[str, Any]:
         req = request.Request(
@@ -79,7 +81,7 @@ class NotionApiClient:
             method="GET",
         )
         try:
-            with request.urlopen(req) as response:
+            with request.urlopen(req, timeout=self._timeout_seconds) as response:
                 payload = response.read().decode("utf-8")
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="ignore")
@@ -275,18 +277,26 @@ def parse_root_page(
     root_page_url: str,
     default_year: int,
     timezone_name: str,
+    progress: Callable[[str], None] | None = None,
 ) -> list[ParsedProblem]:
     root_id = _extract_page_id(root_page_url)
+    if progress:
+        progress(f"Fetching root page blocks: {root_id}")
     root_children = notion_client.list_block_children(root_id)
     pattern_pages = [b for b in root_children if b.get("type") == "child_page"]
+    if progress:
+        progress(f"Found {len(pattern_pages)} pattern pages")
 
     parsed: list[ParsedProblem] = []
-    for page in pattern_pages:
+    for idx, page in enumerate(pattern_pages, start=1):
         pattern_title = page.get("child_page", {}).get("title", "").strip() or "unknown"
         page_id = _hyphenate_notion_id(page.get("id", ""))
         if not page_id:
             continue
+        if progress:
+            progress(f"[{idx}/{len(pattern_pages)}] Parsing pattern page: {pattern_title}")
         blocks = notion_client.list_block_children(page_id)
+        before = len(parsed)
         for block in blocks:
             if block.get("type") != "numbered_list_item":
                 continue
@@ -299,6 +309,10 @@ def parse_root_page(
             )
             if problem:
                 parsed.append(problem)
+        if progress:
+            progress(
+                f"[{idx}/{len(pattern_pages)}] Parsed {len(parsed) - before} problems from {pattern_title}"
+            )
     return parsed
 
 
@@ -311,18 +325,24 @@ def run_import(
     notion_token_env: str,
     default_year: int,
     apply: bool,
+    progress: Callable[[str], None] | None = None,
 ) -> ImportStats:
     token = os.getenv(notion_token_env)
     if not token:
         raise RuntimeError(f"{notion_token_env} is not set")
 
     notion_client = NotionApiClient(token)
+    if progress:
+        progress("Starting Notion import")
     parsed = parse_root_page(
         notion_client=notion_client,
         root_page_url=root_page_url,
         default_year=default_year,
         timezone_name=config.timezone,
+        progress=progress,
     )
+    if progress:
+        progress(f"Parsed total problem entries: {len(parsed)}")
 
     invalid = [problem for problem in parsed if not problem.neetcode_slug]
     valid = [problem for problem in parsed if problem.neetcode_slug]
@@ -336,9 +356,11 @@ def run_import(
             )
         if apply:
             raise RuntimeError("Cannot apply import: missing required neetcode slugs.")
+    if progress:
+        progress(f"Valid problems: {len(valid)} | Invalid problems: {len(invalid)}")
 
     applied = 0
-    for problem in valid:
+    for idx, problem in enumerate(valid, start=1):
         if not apply:
             continue
         payload = LogProblemInput(
@@ -358,6 +380,14 @@ def run_import(
         )
         log_problem(config.db_path, payload)
         applied += 1
+        if progress and idx % 10 == 0:
+            progress(f"Applied {applied}/{len(valid)} problems")
+
+    if progress:
+        if apply:
+            progress(f"Apply complete: {applied} upserted rows")
+        else:
+            progress("Dry-run complete (no writes)")
 
     return ImportStats(
         parsed_total=len(parsed),

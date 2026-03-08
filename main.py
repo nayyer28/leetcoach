@@ -127,6 +127,7 @@ def import_notion_command(
         notion_token_env=notion_token_env,
         default_year=default_year,
         apply=apply,
+        progress=lambda message: click.echo(f"[import] {message}"),
     )
     mode = "APPLY" if apply else "DRY-RUN"
     click.echo(f"Mode: {mode}")

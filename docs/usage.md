@@ -179,6 +179,7 @@ Notes:
 - requires a Notion token env var (default env key: `MCP_BEARER_TOKEN`)
 - parser expects the current numbered-list style in your NeetCode pattern pages
 - importer requires `neetcode_slug` for each parsed problem
+- command prints live progress lines prefixed with `[import]`
 
 ## Troubleshooting
 
