@@ -8,6 +8,7 @@ from leetcoach.app import run
 from leetcoach.config import load_config
 from leetcoach.db.migrate import migrate_database
 from leetcoach.env import load_environment
+from leetcoach.notion_importer import run_import
 
 
 @click.group(invoke_without_command=True, help="Leetcoach CLI")
@@ -83,6 +84,56 @@ def bot_command() -> None:
         ) from exc
     config = load_config()
     raise SystemExit(run_bot(config))
+
+
+@cli.command("import-notion")
+@click.option("--root-page-url", required=True, help="Notion root page URL")
+@click.option("--telegram-user-id", required=True, help="Target Telegram user id")
+@click.option(
+    "--telegram-chat-id",
+    default="import",
+    show_default=True,
+    help="Chat id placeholder for import-created user rows",
+)
+@click.option(
+    "--notion-token-env",
+    default="MCP_BEARER_TOKEN",
+    show_default=True,
+    help="Environment variable name containing Notion token",
+)
+@click.option(
+    "--default-year",
+    default=2026,
+    show_default=True,
+    type=int,
+    help="Year used when source date has no year component",
+)
+@click.option("--apply", is_flag=True, help="Persist changes to DB (default is dry-run)")
+def import_notion_command(
+    root_page_url: str,
+    telegram_user_id: str,
+    telegram_chat_id: str,
+    notion_token_env: str,
+    default_year: int,
+    apply: bool,
+) -> None:
+    """Import problems from Notion root page into local DB."""
+    config = load_config()
+    stats = run_import(
+        config=config,
+        root_page_url=root_page_url,
+        telegram_user_id=telegram_user_id,
+        telegram_chat_id=telegram_chat_id,
+        notion_token_env=notion_token_env,
+        default_year=default_year,
+        apply=apply,
+    )
+    mode = "APPLY" if apply else "DRY-RUN"
+    click.echo(f"Mode: {mode}")
+    click.echo(f"Parsed total: {stats.parsed_total}")
+    click.echo(f"Parsed valid: {stats.parsed_valid}")
+    click.echo(f"Parsed invalid: {stats.parsed_invalid}")
+    click.echo(f"Inserted/updated: {stats.inserted_or_updated}")
 
 
 if __name__ == "__main__":
