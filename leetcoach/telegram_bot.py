@@ -22,6 +22,7 @@ from leetcoach.services.log_problem_service import LogProblemInput, log_problem
 from leetcoach.services.query_service import (
     DueReviewItem,
     complete_review,
+    list_all_problems,
     list_by_pattern,
     list_due_reviews,
     search_problems,
@@ -106,7 +107,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     cfg: AppConfig = context.application.bot_data["config"]
     _register_user(cfg.db_path, update, cfg.timezone)
     await update.message.reply_text(
-        "Registered. Commands: /log, /due, /done <A#>, /search <query>, /pattern <name>"
+        "Registered. Commands: /log, /due, /done <A#>, /search <query>, /pattern <name>, /list"
     )
 
 
@@ -304,6 +305,16 @@ async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.message.reply_text(_render_problem_rows(rows))
 
 
+async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cfg: AppConfig = context.application.bot_data["config"]
+    telegram_user_id = _telegram_user_id(update)
+    rows = list_all_problems(cfg.db_path, telegram_user_id)
+    if not rows:
+        await update.message.reply_text("No logged problems yet.")
+        return
+    await update.message.reply_text(_render_problem_rows(rows))
+
+
 def build_application(config: AppConfig) -> Application:
     if not config.telegram_bot_token:
         raise RuntimeError("LEETCOACH_TELEGRAM_BOT_TOKEN is not configured")
@@ -343,6 +354,7 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(CommandHandler("done", done_command))
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("pattern", pattern_command))
+    app.add_handler(CommandHandler("list", list_command))
     return app
 
 
@@ -351,4 +363,3 @@ def run_bot(config: AppConfig) -> int:
     LOGGER.info("Starting Telegram bot polling")
     application.run_polling(close_loop=False)
     return 0
-

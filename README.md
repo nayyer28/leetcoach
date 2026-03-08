@@ -20,7 +20,7 @@ Completed:
 - software design document
 - CLI commands: `run`, `migrate`, `test`, `bot`
 - schema migrations and DB layer
-- Telegram D1 commands: `/start`, guided `/log`, `/due`, `/done`, `/search`, `/pattern`
+- Telegram D1 commands: `/start`, guided `/log`, `/due`, `/done`, `/search`, `/list`, `/pattern`
 
 Next:
 - add test coverage for Telegram/query workflows

@@ -9,6 +9,7 @@ This document defines Telegram command behavior for the current app interface.
 - `/due`
 - `/done <token>`
 - `/search <query>`
+- `/list`
 - `/pattern <pattern>`
 
 ## `/start`
@@ -112,16 +113,33 @@ Success response:
 No data response:
 - `No matching problems.`
 
+## `/list`
+
+Purpose:
+- list all logged problems for the current user
+
+Input:
+- no arguments
+
+Behavior:
+- returns up to 100 user problems, newest solved first
+
+Success response:
+- list of matching problems with title, difficulty, pattern, solved time
+
+No data response:
+- `No logged problems yet.`
+
 ## `/pattern <pattern>`
 
 Purpose:
 - list problems under one pattern name
 
 Input:
-- exact pattern string
+- pattern substring
 
 Behavior:
-- case-insensitive filter on stored pattern, scoped to current user
+- case-insensitive partial match on stored pattern, scoped to current user
 
 Success response:
 - list of matching problems with title/difficulty/pattern/solved time
