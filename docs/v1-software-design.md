@@ -24,7 +24,7 @@ No layer skips downward boundaries.
 
 ### Interface Layer
 - entrypoint: `main.py`
-- currently supports: `run`, `migrate`
+- currently supports: `run`, `migrate`, `test`
 - future: Telegram handlers
 
 ### Service Layer
