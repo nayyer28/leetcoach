@@ -12,6 +12,9 @@ source .venv/bin/activate
 python -m pip install -e .
 ```
 
+`.env` is auto-loaded by the CLI on startup (if present in repo root).
+You can still override values by exporting env vars in the shell.
+
 ## CLI Help
 
 ```bash
@@ -55,7 +58,13 @@ Use BotFather in Telegram:
 
 ### 2) Export token locally
 
-Set bot token:
+Set bot token in `.env` (recommended):
+
+```env
+LEETCOACH_TELEGRAM_BOT_TOKEN=<your-token>
+```
+
+Or export in the shell (overrides `.env`):
 
 ```bash
 export LEETCOACH_TELEGRAM_BOT_TOKEN="<your-token>"
