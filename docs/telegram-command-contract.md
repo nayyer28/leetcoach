@@ -5,6 +5,7 @@ This document defines Telegram command behavior for the current app interface.
 ## Command List
 
 - `/start`
+- `/register`
 - `/help`
 - `/log`
 - `/due`
@@ -26,7 +27,19 @@ Behavior:
 - stores Telegram chat id and timezone default
 
 Success response:
-- command list summary for available actions
+- first run: registered confirmation + command menu
+- later runs: welcome-back message + command menu
+
+## `/register`
+
+Purpose:
+- explicit registration alias (same behavior as `/start`)
+
+Input:
+- no arguments
+
+Behavior:
+- calls same register-or-welcome flow as `/start`
 
 ## `/help`
 
@@ -88,7 +101,7 @@ Behavior:
 - returns entries with short tokens `A1`, `A2`, ...
 
 Success response:
-- structured list with token, title, review day, status, due time
+- tabular output with token, title, review day, status, due time
 - due time is rendered in configured local timezone
 
 No data response:
@@ -126,7 +139,7 @@ Behavior:
 - case-insensitive search scoped to current user
 
 Success response:
-- structured list with title, difficulty, pattern, solved time
+- tabular output with title, difficulty, pattern, solved time
 - solved time is rendered in configured local timezone
 
 No data response:
@@ -144,7 +157,7 @@ Behavior:
 - returns up to 100 user problems, newest solved first
 
 Success response:
-- structured list with title, difficulty, pattern, solved time
+- tabular output with title, difficulty, pattern, solved time
 - solved time is rendered in configured local timezone
 
 No data response:
@@ -162,7 +175,7 @@ Behavior:
 - case-insensitive partial match on stored pattern, scoped to current user
 
 Success response:
-- structured list with title/difficulty/pattern/solved time
+- tabular output with title/difficulty/pattern/solved time
 - solved time is rendered in configured local timezone
 
 No data response:

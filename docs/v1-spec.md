@@ -196,6 +196,9 @@ Reminder policy:
 - `/help`
   - shows available command menu
 
+- `/register`
+  - explicit alias of `/start` register-or-welcome behavior
+
 - `/due`
   - lists user checkpoints in `pending` or `overdue`
 
