@@ -97,6 +97,7 @@ Notes:
 - list/search/pattern/due responses are rendered as compact numbered cards
 - timestamps are shown in configured local timezone
 - list/search/pattern/due include LeetCode + NeetCode URLs built from slugs
+- Telegram link previews are disabled globally to avoid noisy URL cards in chat
 
 ## Inspect Database
 
