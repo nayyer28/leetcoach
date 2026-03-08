@@ -62,13 +62,20 @@ Set bot token in `.env` (recommended):
 
 ```env
 LEETCOACH_TELEGRAM_BOT_TOKEN=<your-token>
+LEETCOACH_ALLOWED_USER_IDS=<telegram_user_id_1>,<telegram_user_id_2>
 ```
 
 Or export in the shell (overrides `.env`):
 
 ```bash
 export LEETCOACH_TELEGRAM_BOT_TOKEN="<your-token>"
+export LEETCOACH_ALLOWED_USER_IDS="123456789"
 ```
+
+Allow-list behavior:
+- if `LEETCOACH_ALLOWED_USER_IDS` is empty/unset, bot is open to any Telegram user
+- if set, only listed Telegram user IDs can use commands
+- blocked users get: `⛔ Access denied for this bot.`
 
 ### 3) Start the bot process
 
