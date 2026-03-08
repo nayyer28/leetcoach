@@ -79,6 +79,9 @@ This registers your Telegram user/chat in the local database.
 Telegram command details (input/behavior/examples) are defined in:
 - [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
 
+Current command set:
+- `/start`, guided `/log`, `/due`, `/done <token>`, `/search <query>`, `/list`, `/pattern <pattern-substring>`
+
 ## Inspect Database
 
 Open SQLite shell:

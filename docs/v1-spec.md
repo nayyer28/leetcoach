@@ -196,16 +196,19 @@ Reminder policy:
 - `/due`
   - lists user checkpoints in `pending` or `overdue`
 
-- `/done <problem_id> <review_day>`
-  - marks matching checkpoint complete (`completed_at = now`)
-  - implementation should resolve through `user_problem_id` to avoid cross-user ambiguity
+- `/done <token>`
+  - marks one checkpoint complete (`completed_at = now`)
+  - token is resolved from the latest `/due` output for the current user
 
 - `/search <query>`
   - searches user-linked rows by title, pattern, and notes
   - title from `problems`; pattern/notes from `user_problems`
 
+- `/list`
+  - lists logged user problems newest-first
+
 - `/pattern <pattern_name>`
-  - lists user problems from `user_problems` by pattern
+  - lists user problems from `user_problems` by case-insensitive partial pattern match
 
 ## Notion Mapping (Design Only)
 

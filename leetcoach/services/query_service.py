@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from leetcoach.dao.problem_reviews_dao import list_due_reviews_for_user, mark_review_done
 from leetcoach.dao.user_problems_dao import (
+    list_user_problems,
     list_user_problems_by_pattern,
     search_user_problems,
 )
@@ -133,3 +134,23 @@ def list_by_pattern(
         for r in rows
     ]
 
+
+def list_all_problems(db_path: str, telegram_user_id: str) -> list[dict[str, str]]:
+    with get_connection(db_path) as conn:
+        user_id = get_user_id_by_telegram_user_id(
+            conn, telegram_user_id=telegram_user_id
+        )
+        if user_id is None:
+            return []
+        rows = list_user_problems(conn, user_id=user_id, limit=100)
+    return [
+        {
+            "title": str(r["title"]),
+            "difficulty": str(r["difficulty"]),
+            "pattern": str(r["pattern"]),
+            "solved_at": str(r["solved_at"]),
+            "leetcode_slug": str(r["leetcode_slug"]),
+            "neetcode_slug": str(r["neetcode_slug"]) if r["neetcode_slug"] else "",
+        }
+        for r in rows
+    ]

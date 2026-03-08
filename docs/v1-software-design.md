@@ -25,7 +25,7 @@ No layer skips downward boundaries.
 ### Interface Layer
 - entrypoint: `main.py`
 - currently supports: `run`, `migrate`, `test`, `bot`
-- includes Telegram command handlers for: `/start`, `/log`, `/due`, `/done`, `/search`, `/pattern`
+- includes Telegram command handlers for: `/start`, `/log`, `/due`, `/done`, `/search`, `/list`, `/pattern`
 
 ### Service Layer
 - implements use-cases (for example: log problem)

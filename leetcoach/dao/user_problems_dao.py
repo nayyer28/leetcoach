@@ -94,6 +94,7 @@ def search_user_problems(
 def list_user_problems_by_pattern(
     conn: sqlite3.Connection, *, user_id: int, pattern: str
 ) -> list[sqlite3.Row]:
+    like = f"%{pattern.lower()}%"
     return conn.execute(
         """
         SELECT
@@ -107,9 +108,32 @@ def list_user_problems_by_pattern(
         FROM user_problems up
         JOIN problems p ON p.id = up.problem_id
         WHERE up.user_id = ?
-          AND lower(up.pattern) = lower(?)
+          AND lower(up.pattern) LIKE ?
         ORDER BY up.solved_at DESC
         LIMIT 50
         """,
-        (user_id, pattern),
+        (user_id, like),
+    ).fetchall()
+
+
+def list_user_problems(
+    conn: sqlite3.Connection, *, user_id: int, limit: int = 100
+) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT
+            up.id AS user_problem_id,
+            p.title,
+            p.difficulty,
+            p.leetcode_slug,
+            p.neetcode_slug,
+            up.pattern,
+            up.solved_at
+        FROM user_problems up
+        JOIN problems p ON p.id = up.problem_id
+        WHERE up.user_id = ?
+        ORDER BY up.solved_at DESC
+        LIMIT ?
+        """,
+        (user_id, limit),
     ).fetchall()
