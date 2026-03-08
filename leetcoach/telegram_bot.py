@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 import logging
 from typing import Any
 
@@ -18,6 +17,7 @@ from telegram.ext import (
 from leetcoach.config import AppConfig
 from leetcoach.dao.users_dao import upsert_user
 from leetcoach.db.connection import get_connection
+from leetcoach.services.due_tokens import DueTokenStore, ReviewToken
 from leetcoach.services.log_problem_service import LogProblemInput, log_problem
 from leetcoach.services.query_service import (
     DueReviewItem,
@@ -42,39 +42,6 @@ LOGGER = logging.getLogger("leetcoach.telegram")
     LOG_SPACE_COMPLEXITY,
     LOG_NOTES,
 ) = range(10)
-
-
-@dataclass(frozen=True)
-class ReviewToken:
-    user_problem_id: int
-    review_day: int
-
-
-class DueTokenStore:
-    def __init__(self) -> None:
-        self._store: dict[str, tuple[datetime, dict[str, ReviewToken]]] = {}
-
-    def put(self, telegram_user_id: str, items: list[DueReviewItem]) -> dict[str, ReviewToken]:
-        expires = datetime.now(UTC) + timedelta(hours=4)
-        mapping: dict[str, ReviewToken] = {}
-        for idx, item in enumerate(items, start=1):
-            token = f"A{idx}"
-            mapping[token] = ReviewToken(
-                user_problem_id=item.user_problem_id,
-                review_day=item.review_day,
-            )
-        self._store[telegram_user_id] = (expires, mapping)
-        return mapping
-
-    def get(self, telegram_user_id: str, token: str) -> ReviewToken | None:
-        value = self._store.get(telegram_user_id)
-        if value is None:
-            return None
-        expires, mapping = value
-        if datetime.now(UTC) > expires:
-            del self._store[telegram_user_id]
-            return None
-        return mapping.get(token.upper())
 
 
 def _telegram_user_id(update: Update) -> str:
@@ -351,4 +318,3 @@ def run_bot(config: AppConfig) -> int:
     LOGGER.info("Starting Telegram bot polling")
     application.run_polling(close_loop=False)
     return 0
-
