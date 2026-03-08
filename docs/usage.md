@@ -21,6 +21,7 @@ python main.py --help
 Expected commands:
 - `run` (default when no subcommand is passed)
 - `migrate`
+- `test`
 
 ## Run App Bootstrap
 
@@ -62,5 +63,5 @@ For detailed DB commands, see [`docs/db-quickstart.md`](docs/db-quickstart.md).
 ## Run Integration Tests
 
 ```bash
-python -m unittest discover -s tests -p "test_*.py" -v
+python main.py test
 ```

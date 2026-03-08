@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import click
+import subprocess
+import sys
 
 from leetcoach.app import run
 from leetcoach.config import load_config
@@ -26,6 +28,26 @@ def migrate_command() -> None:
     """Apply DB migrations."""
     config = load_config()
     raise SystemExit(migrate_database(config.db_path))
+
+
+@cli.command("test")
+def test_command() -> None:
+    """Run integration tests."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests",
+            "-p",
+            "test_*.py",
+            "-v",
+        ],
+        check=False,
+    )
+    raise SystemExit(result.returncode)
 
 
 if __name__ == "__main__":
