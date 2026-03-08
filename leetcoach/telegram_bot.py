@@ -305,46 +305,25 @@ async def log_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
-def _truncate(value: str, width: int) -> str:
-    if len(value) <= width:
-        return value
-    if width <= 1:
-        return value[:width]
-    return value[: width - 1] + "…"
-
-
-def _make_table(headers: list[str], rows: list[list[str]], widths: list[int]) -> str:
-    header = " | ".join(h.ljust(widths[idx]) for idx, h in enumerate(headers))
-    separator = "-+-".join("-" * widths[idx] for idx in range(len(widths)))
-    body = [
-        " | ".join(_truncate(cell, widths[idx]).ljust(widths[idx]) for idx, cell in enumerate(row))
-        for row in rows
-    ]
-    return "\n".join([header, separator, *body])
-
-
 def _render_due(
     items: list[DueReviewItem], token_map: dict[str, ReviewToken], timezone_name: str
 ) -> str:
     rev_lookup = {(v.user_problem_id, v.review_day): k for k, v in token_map.items()}
-    rows: list[list[str]] = []
-    for item in items:
+    lines: list[str] = ["⏰ Due Reviews", ""]
+    for idx, item in enumerate(items, start=1):
         token = rev_lookup[(item.user_problem_id, item.review_day)]
-        rows.append(
-            [
-                token,
-                item.title,
-                str(item.review_day),
-                item.status.upper(),
-                _format_timestamp_compact(item.due_at, timezone_name),
-            ]
+        lines.append(
+            f"{idx}. [{token}] {item.title}"
         )
-    table = _make_table(
-        headers=["Tok", "Title", "Day", "Status", "Due"],
-        rows=rows,
-        widths=[4, 28, 3, 8, 16],
-    )
-    return f"⏰ <b>Due Reviews</b>\n<pre>{escape(table)}</pre>\nUse /done A1"
+        lines.append(
+            (
+                f"   Day {item.review_day} • {item.status.upper()} • "
+                f"{_format_timestamp_compact(item.due_at, timezone_name)}"
+            )
+        )
+    lines.append("")
+    lines.append("Use /done A1")
+    return "\n".join(lines)
 
 
 async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -358,9 +337,7 @@ async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
     token_map = token_store.put(telegram_user_id, items)
-    await update.message.reply_text(
-        _render_due(items, token_map, cfg.timezone), parse_mode=ParseMode.HTML
-    )
+    await update.message.reply_text(_render_due(items, token_map, cfg.timezone))
 
 
 async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -383,23 +360,16 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 def _render_problem_rows(rows: list[dict[str, str]], timezone_name: str) -> str:
-    table_rows: list[list[str]] = []
+    lines: list[str] = ["📚 Your Problems", ""]
     for idx, row in enumerate(rows, start=1):
-        table_rows.append(
-            [
-                str(idx),
-                row["title"],
-                row["difficulty"].title(),
-                row["pattern"],
-                _format_timestamp_compact(row["solved_at"], timezone_name),
-            ]
+        lines.append(f"{idx}. {row['title']}")
+        lines.append(
+            (
+                f"   {row['difficulty'].title()} • {row['pattern']} • "
+                f"{_format_timestamp_compact(row['solved_at'], timezone_name)}"
+            )
         )
-    table = _make_table(
-        headers=["#", "Title", "Diff", "Pattern", "Solved"],
-        rows=table_rows,
-        widths=[3, 28, 6, 12, 16],
-    )
-    return f"📚 <b>Your Problems</b>\n<pre>{escape(table)}</pre>"
+    return "\n".join(lines)
 
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -413,9 +383,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not rows:
         await update.message.reply_text("🔎 No matching problems.")
         return
-    await update.message.reply_text(
-        _render_problem_rows(rows, cfg.timezone), parse_mode=ParseMode.HTML
-    )
+    await update.message.reply_text(_render_problem_rows(rows, cfg.timezone))
 
 
 async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -429,9 +397,7 @@ async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not rows:
         await update.message.reply_text("🧠 No problems for this pattern.")
         return
-    await update.message.reply_text(
-        _render_problem_rows(rows, cfg.timezone), parse_mode=ParseMode.HTML
-    )
+    await update.message.reply_text(_render_problem_rows(rows, cfg.timezone))
 
 
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -441,9 +407,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not rows:
         await update.message.reply_text("🗂️ No logged problems yet.")
         return
-    await update.message.reply_text(
-        _render_problem_rows(rows, cfg.timezone), parse_mode=ParseMode.HTML
-    )
+    await update.message.reply_text(_render_problem_rows(rows, cfg.timezone))
 
 
 async def default_text_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:

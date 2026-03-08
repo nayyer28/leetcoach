@@ -94,8 +94,8 @@ Current command set:
 Notes:
 - `/start` is register-or-welcome: first call registers, later calls welcome you back
 - `/log` solved-time input accepts: `now`, ISO 8601, or `YYYY-MM-DD HH:MM` (local time)
-- list/search/pattern/due responses are rendered as monospace tables
-- table timestamps are shown in configured local timezone
+- list/search/pattern/due responses are rendered as compact numbered cards
+- timestamps are shown in configured local timezone
 
 ## Inspect Database
 

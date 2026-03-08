@@ -101,7 +101,7 @@ Behavior:
 - returns entries with short tokens `A1`, `A2`, ...
 
 Success response:
-- tabular output with token, title, review day, status, due time
+- compact numbered list with token, title, review day, status, due time
 - due time is rendered in configured local timezone
 
 No data response:
@@ -139,7 +139,7 @@ Behavior:
 - case-insensitive search scoped to current user
 
 Success response:
-- tabular output with title, difficulty, pattern, solved time
+- compact numbered list with title, difficulty, pattern, solved time
 - solved time is rendered in configured local timezone
 
 No data response:
@@ -157,7 +157,7 @@ Behavior:
 - returns up to 100 user problems, newest solved first
 
 Success response:
-- tabular output with title, difficulty, pattern, solved time
+- compact numbered list with title, difficulty, pattern, solved time
 - solved time is rendered in configured local timezone
 
 No data response:
@@ -175,7 +175,7 @@ Behavior:
 - case-insensitive partial match on stored pattern, scoped to current user
 
 Success response:
-- tabular output with title/difficulty/pattern/solved time
+- compact numbered list with title/difficulty/pattern/solved time
 - solved time is rendered in configured local timezone
 
 No data response:
