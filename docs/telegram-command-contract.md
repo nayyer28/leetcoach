@@ -5,6 +5,7 @@ This document defines Telegram command behavior for the current app interface.
 ## Command List
 
 - `/start`
+- `/help`
 - `/log`
 - `/due`
 - `/done <token>`
@@ -26,6 +27,17 @@ Behavior:
 
 Success response:
 - command list summary for available actions
+
+## `/help`
+
+Purpose:
+- show command menu without re-registering the user
+
+Input:
+- no arguments
+
+Behavior:
+- returns grouped command help text
 
 ## `/log` (guided flow)
 
@@ -55,6 +67,11 @@ Behavior:
 Success response:
 - confirms problem logged and shows `user_problem_id`
 
+Accepted solved timestamp inputs:
+- `now`
+- ISO 8601 (for example `2026-03-08T12:00:00+00:00`)
+- local datetime `YYYY-MM-DD HH:MM` (converted to UTC for storage)
+
 Cancel:
 - `/cancel` during flow aborts and clears pending state
 
@@ -71,7 +88,8 @@ Behavior:
 - returns entries with short tokens `A1`, `A2`, ...
 
 Success response:
-- one line per due item with token + title + day + status + due time
+- structured list with token, title, review day, status, due time
+- due time is rendered in configured local timezone
 
 No data response:
 - `No pending/overdue reviews.`
@@ -108,7 +126,8 @@ Behavior:
 - case-insensitive search scoped to current user
 
 Success response:
-- list of matching problems with title, difficulty, pattern, solved time
+- structured list with title, difficulty, pattern, solved time
+- solved time is rendered in configured local timezone
 
 No data response:
 - `No matching problems.`
@@ -125,7 +144,8 @@ Behavior:
 - returns up to 100 user problems, newest solved first
 
 Success response:
-- list of matching problems with title, difficulty, pattern, solved time
+- structured list with title, difficulty, pattern, solved time
+- solved time is rendered in configured local timezone
 
 No data response:
 - `No logged problems yet.`
@@ -142,7 +162,8 @@ Behavior:
 - case-insensitive partial match on stored pattern, scoped to current user
 
 Success response:
-- list of matching problems with title/difficulty/pattern/solved time
+- structured list with title/difficulty/pattern/solved time
+- solved time is rendered in configured local timezone
 
 No data response:
 - `No problems for this pattern.`

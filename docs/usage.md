@@ -89,7 +89,11 @@ Telegram command details (input/behavior/examples) are defined in:
 - [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
 
 Current command set:
-- `/start`, guided `/log`, `/due`, `/done <token>`, `/search <query>`, `/list`, `/pattern <pattern-substring>`
+- `/start`, `/help`, guided `/log`, `/due`, `/done <token>`, `/search <query>`, `/list`, `/pattern <pattern-substring>`
+
+Notes:
+- `/log` solved-time input accepts: `now`, ISO 8601, or `YYYY-MM-DD HH:MM` (local time)
+- list/search/pattern/due responses render timestamps in configured local timezone
 
 ## Inspect Database
 

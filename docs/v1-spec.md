@@ -193,6 +193,9 @@ Reminder policy:
   - creates/updates user row in `user_problems`
   - ensures day 7/day 21 review rows exist in `problem_reviews`
 
+- `/help`
+  - shows available command menu
+
 - `/due`
   - lists user checkpoints in `pending` or `overdue`
 
