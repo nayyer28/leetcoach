@@ -6,7 +6,7 @@ import logging
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from telegram import Update
+from telegram import LinkPreviewOptions, Update
 from telegram.constants import ParseMode
 from telegram.error import Conflict
 from telegram.ext import (
@@ -14,6 +14,7 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     ConversationHandler,
+    Defaults,
     MessageHandler,
     filters,
 )
@@ -452,7 +453,12 @@ def build_application(config: AppConfig) -> Application:
     if not config.telegram_bot_token:
         raise RuntimeError("LEETCOACH_TELEGRAM_BOT_TOKEN is not configured")
 
-    app = Application.builder().token(config.telegram_bot_token).build()
+    app = (
+        Application.builder()
+        .token(config.telegram_bot_token)
+        .defaults(Defaults(link_preview_options=LinkPreviewOptions(is_disabled=True)))
+        .build()
+    )
     app.bot_data["config"] = config
     app.bot_data["due_tokens"] = DueTokenStore()
 
