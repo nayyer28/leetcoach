@@ -39,9 +39,10 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         ]
         text = _render_problem_rows(rows, "Europe/Berlin")
         self.assertIn("Your Problems", text)
-        self.assertIn("<pre>", text)
+        self.assertNotIn("<pre>", text)
         self.assertIn("Validate Binary Search Tree", text)
         self.assertIn("Medium", text)
+        self.assertIn("Trees", text)
         self.assertIn("08 Mar 14:28 CET", text)
 
     def test_render_due_includes_header_token_and_human_time(self) -> None:
@@ -60,8 +61,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         token_map = {"A1": ReviewToken(user_problem_id=10, review_day=7)}
         text = _render_due(items, token_map, "Europe/Berlin")
         self.assertIn("Due Reviews", text)
-        self.assertIn("<pre>", text)
-        self.assertIn("A1", text)
+        self.assertNotIn("<pre>", text)
+        self.assertIn("[A1]", text)
         self.assertIn("PENDING", text)
         self.assertIn("15 Mar 14:28 CET", text)
 
