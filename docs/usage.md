@@ -110,6 +110,24 @@ sqlite3 .local/leetcoach.db "SELECT name, tbl_name FROM sqlite_master WHERE type
 python main.py test
 ```
 
+Run only unit tests:
+
+```bash
+python main.py test unit
+```
+
+Run only integration tests:
+
+```bash
+python main.py test integration
+```
+
+Run a specific test target:
+
+```bash
+python main.py test unit tests.unit.dao.test_problem_reviews_dao
+```
+
 ## Troubleshooting
 
 - `ModuleNotFoundError: click` or Telegram imports missing

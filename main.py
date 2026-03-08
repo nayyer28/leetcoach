@@ -31,22 +31,42 @@ def migrate_command() -> None:
 
 
 @cli.command("test")
-def test_command() -> None:
-    """Run integration tests."""
-    result = subprocess.run(
-        [
+@click.argument(
+    "suite",
+    required=False,
+    default="all",
+    type=click.Choice(["all", "unit", "integration"], case_sensitive=False),
+)
+@click.argument("target", required=False)
+def test_command(suite: str, target: str | None) -> None:
+    """Run test suites.
+
+    Examples:
+      python main.py test
+      python main.py test unit
+      python main.py test integration
+      python main.py test unit tests.unit.dao.test_problem_reviews_dao
+    """
+    if target:
+        cmd = [sys.executable, "-m", "unittest", "-v", target]
+    else:
+        start_dir = {
+            "all": "tests",
+            "unit": "tests/unit",
+            "integration": "tests/integration",
+        }[suite.lower()]
+        cmd = [
             sys.executable,
             "-m",
             "unittest",
             "discover",
             "-s",
-            "tests",
+            start_dir,
             "-p",
             "test_*.py",
             "-v",
-        ],
-        check=False,
-    )
+        ]
+    result = subprocess.run(cmd, check=False)
     raise SystemExit(result.returncode)
 
 
