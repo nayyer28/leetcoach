@@ -104,14 +104,14 @@ Fields:
 - `id` INTEGER PRIMARY KEY
 - `title` TEXT NOT NULL
 - `difficulty` TEXT NOT NULL CHECK (`difficulty IN ('easy','medium','hard')`)
-- `leetcode_slug` TEXT NOT NULL UNIQUE
-- `neetcode_slug` TEXT NULL UNIQUE
+- `leetcode_slug` TEXT NULL UNIQUE
+- `neetcode_slug` TEXT NOT NULL UNIQUE
 - `created_at` TEXT NOT NULL
 - `updated_at` TEXT NOT NULL
 
 Constraints and indexes:
-- unique index on `leetcode_slug`
-- unique index on `neetcode_slug` when present
+- unique index/constraint on `leetcode_slug` when present
+- unique index/constraint on `neetcode_slug` (required)
 - index on `title`
 
 URL construction (application layer, not DB):
