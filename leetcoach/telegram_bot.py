@@ -35,6 +35,7 @@ from leetcoach.services.query_service import (
 
 
 LOGGER = logging.getLogger("leetcoach.telegram")
+TELEGRAM_MESSAGE_CHUNK_SIZE = 3500
 
 (
     LOG_TITLE,
@@ -390,7 +391,7 @@ async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
     token_map = token_store.put(telegram_user_id, items)
-    await update.message.reply_text(_render_due(items, token_map, cfg.timezone))
+    await _reply_long_text(update, _render_due(items, token_map, cfg.timezone))
 
 
 async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -433,6 +434,44 @@ def _render_problem_rows(rows: list[dict[str, str]], timezone_name: str) -> str:
     return "\n".join(lines)
 
 
+def _chunk_text(text: str, chunk_size: int = TELEGRAM_MESSAGE_CHUNK_SIZE) -> list[str]:
+    if len(text) <= chunk_size:
+        return [text]
+
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+
+    for line in text.splitlines(keepends=True):
+        if len(line) > chunk_size:
+            if current:
+                chunks.append("".join(current).rstrip())
+                current = []
+                current_len = 0
+            start = 0
+            while start < len(line):
+                chunks.append(line[start : start + chunk_size].rstrip())
+                start += chunk_size
+            continue
+
+        if current_len + len(line) > chunk_size and current:
+            chunks.append("".join(current).rstrip())
+            current = [line]
+            current_len = len(line)
+        else:
+            current.append(line)
+            current_len += len(line)
+
+    if current:
+        chunks.append("".join(current).rstrip())
+    return chunks
+
+
+async def _reply_long_text(update: Update, text: str) -> None:
+    for chunk in _chunk_text(text):
+        await update.message.reply_text(chunk)
+
+
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
@@ -446,7 +485,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not rows:
         await update.message.reply_text("🔎 No matching problems.")
         return
-    await update.message.reply_text(_render_problem_rows(rows, cfg.timezone))
+    await _reply_long_text(update, _render_problem_rows(rows, cfg.timezone))
 
 
 async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -462,7 +501,7 @@ async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not rows:
         await update.message.reply_text("🧠 No problems for this pattern.")
         return
-    await update.message.reply_text(_render_problem_rows(rows, cfg.timezone))
+    await _reply_long_text(update, _render_problem_rows(rows, cfg.timezone))
 
 
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -474,7 +513,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not rows:
         await update.message.reply_text("🗂️ No logged problems yet.")
         return
-    await update.message.reply_text(_render_problem_rows(rows, cfg.timezone))
+    await _reply_long_text(update, _render_problem_rows(rows, cfg.timezone))
 
 
 async def default_text_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
