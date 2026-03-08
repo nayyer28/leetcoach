@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from html import escape
 import logging
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -17,7 +18,7 @@ from telegram.ext import (
 )
 
 from leetcoach.config import AppConfig
-from leetcoach.dao.users_dao import upsert_user
+from leetcoach.dao.users_dao import get_user_id_by_telegram_user_id, upsert_user
 from leetcoach.db.connection import get_connection
 from leetcoach.services.due_tokens import DueTokenStore, ReviewToken
 from leetcoach.services.log_problem_service import LogProblemInput, log_problem
@@ -62,6 +63,14 @@ def _format_timestamp(iso_ts: str, timezone_name: str) -> str:
     return local_dt.strftime("%d %b %Y, %H:%M %Z")
 
 
+def _format_timestamp_compact(iso_ts: str, timezone_name: str) -> str:
+    dt = datetime.fromisoformat(iso_ts)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    local_dt = dt.astimezone(_resolve_timezone(timezone_name))
+    return local_dt.strftime("%d %b %H:%M %Z")
+
+
 def _normalize_solved_at(raw_value: str, timezone_name: str) -> str | None:
     value = raw_value.strip()
     if value.lower() == "now":
@@ -84,23 +93,25 @@ def _normalize_solved_at(raw_value: str, timezone_name: str) -> str | None:
 
 def _commands_help_text() -> str:
     return (
-        "<b>leetcoach commands</b>\n"
-        "Log:\n"
-        "- /log\n"
-        "Review:\n"
-        "- /due\n"
-        "- /done A1\n"
-        "Browse:\n"
-        "- /list\n"
-        "- /pattern &lt;text&gt;\n"
-        "- /search &lt;text&gt;\n"
-        "Help:\n"
-        "- /help"
+        "🤖 <b>LeetCoach Command Menu</b>\n\n"
+        "📝 <b>Log</b>\n"
+        "• /log\n\n"
+        "⏰ <b>Review</b>\n"
+        "• /due\n"
+        "• /done A1\n\n"
+        "📚 <b>Browse</b>\n"
+        "• /list\n"
+        "• /pattern &lt;text&gt;\n"
+        "• /search &lt;text&gt;\n\n"
+        "👤 <b>Registration</b>\n"
+        "• /register\n\n"
+        "ℹ️ <b>Help</b>\n"
+        "• /help"
     )
 
 
 def _log_prompt(step: int, total: int, text: str) -> str:
-    return f"[{step}/{total}] {text}\nSend /cancel to stop."
+    return f"🧩 [{step}/{total}] {text}\nSend /cancel to stop."
 
 
 def _telegram_user_id(update: Update) -> str:
@@ -115,9 +126,14 @@ def _telegram_chat_id(update: Update) -> str:
     return str(update.effective_chat.id)
 
 
-def _register_user(db_path: str, update: Update, timezone: str) -> None:
+def _register_user(db_path: str, update: Update, timezone: str) -> bool:
     now_iso = datetime.now(UTC).isoformat()
+    is_new = False
     with get_connection(db_path) as conn:
+        existing = get_user_id_by_telegram_user_id(
+            conn, telegram_user_id=_telegram_user_id(update)
+        )
+        is_new = existing is None
         upsert_user(
             conn,
             telegram_user_id=_telegram_user_id(update),
@@ -126,12 +142,24 @@ def _register_user(db_path: str, update: Update, timezone: str) -> None:
             now_iso=now_iso,
         )
         conn.commit()
+    return is_new
+
+
+def _display_name(update: Update) -> str:
+    if update.effective_user and update.effective_user.first_name:
+        return update.effective_user.first_name
+    return "there"
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg: AppConfig = context.application.bot_data["config"]
-    _register_user(cfg.db_path, update, cfg.timezone)
-    await update.message.reply_text("Registered.")
+    is_new = _register_user(cfg.db_path, update, cfg.timezone)
+    name = _display_name(update)
+    if is_new:
+        message = f"✅ You’re registered, {escape(name)}. Let’s train."
+    else:
+        message = f"👋 Welcome back, {escape(name)}. Ready for another round?"
+    await update.message.reply_text(message, parse_mode=ParseMode.HTML)
     await update.message.reply_text(
         _commands_help_text(),
         parse_mode=ParseMode.HTML,
@@ -140,6 +168,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(_commands_help_text(), parse_mode=ParseMode.HTML)
+
+
+async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await start_command(update, context)
 
 
 async def log_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -157,7 +189,9 @@ async def log_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def log_difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     difficulty = update.message.text.strip().lower()
     if difficulty not in {"easy", "medium", "hard"}:
-        await update.message.reply_text("Invalid difficulty. Use easy, medium, or hard.")
+        await update.message.reply_text(
+            "⚠️ Invalid difficulty. Use: easy, medium, or hard."
+        )
         return LOG_DIFFICULTY
     context.user_data["log_payload"]["difficulty"] = difficulty
     await update.message.reply_text(
@@ -196,7 +230,7 @@ async def log_solved_at(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     solved_at = _normalize_solved_at(update.message.text, cfg.timezone)
     if solved_at is None:
         await update.message.reply_text(
-            "Invalid timestamp. Use 'now', ISO 8601, or YYYY-MM-DD HH:MM."
+            "⚠️ Invalid timestamp. Use 'now', ISO 8601, or YYYY-MM-DD HH:MM."
         )
         return LOG_SOLVED_AT
     context.user_data["log_payload"]["solved_at"] = solved_at
@@ -252,7 +286,8 @@ async def log_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     solved_label = _format_timestamp(payload_data["solved_at"], cfg.timezone)
     await update.message.reply_text(
         (
-            f"Logged: {log_input.title}\n"
+            "✅ Problem logged\n"
+            f"Title: {log_input.title}\n"
             f"Difficulty: {log_input.difficulty.title()}\n"
             f"Pattern: {log_input.pattern}\n"
             f"Solved: {solved_label}\n"
@@ -265,29 +300,50 @@ async def log_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def log_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.pop("log_payload", None)
-    await update.message.reply_text("Log flow cancelled.")
+    await update.message.reply_text("🛑 Log flow cancelled.")
     return ConversationHandler.END
+
+
+def _truncate(value: str, width: int) -> str:
+    if len(value) <= width:
+        return value
+    if width <= 1:
+        return value[:width]
+    return value[: width - 1] + "…"
+
+
+def _make_table(headers: list[str], rows: list[list[str]], widths: list[int]) -> str:
+    header = " | ".join(h.ljust(widths[idx]) for idx, h in enumerate(headers))
+    separator = "-+-".join("-" * widths[idx] for idx in range(len(widths)))
+    body = [
+        " | ".join(_truncate(cell, widths[idx]).ljust(widths[idx]) for idx, cell in enumerate(row))
+        for row in rows
+    ]
+    return "\n".join([header, separator, *body])
 
 
 def _render_due(
     items: list[DueReviewItem], token_map: dict[str, ReviewToken], timezone_name: str
 ) -> str:
-    lines = []
     rev_lookup = {(v.user_problem_id, v.review_day): k for k, v in token_map.items()}
-    lines.append("Due Reviews")
-    lines.append("")
-    for idx, item in enumerate(items, start=1):
+    rows: list[list[str]] = []
+    for item in items:
         token = rev_lookup[(item.user_problem_id, item.review_day)]
-        due_at = _format_timestamp(item.due_at, timezone_name)
-        lines.append(
-            (
-                f"{idx}. [{token}] {item.title}\n"
-                f"   Review day: {item.review_day}\n"
-                f"   Status: {item.status.upper()}\n"
-                f"   Due: {due_at}"
-            )
+        rows.append(
+            [
+                token,
+                item.title,
+                str(item.review_day),
+                item.status.upper(),
+                _format_timestamp_compact(item.due_at, timezone_name),
+            ]
         )
-    return "\n".join(lines)
+    table = _make_table(
+        headers=["Tok", "Title", "Day", "Status", "Due"],
+        rows=rows,
+        widths=[4, 28, 3, 8, 16],
+    )
+    return f"⏰ <b>Due Reviews</b>\n<pre>{escape(table)}</pre>\nUse /done A1"
 
 
 async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -297,11 +353,13 @@ async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     items = list_due_reviews(cfg.db_path, telegram_user_id)
     if not items:
         await update.message.reply_text(
-            "No pending/overdue reviews right now.\nUse /list to see your logged problems."
+            "✅ No pending/overdue reviews right now.\nUse /list to see your logged problems."
         )
         return
     token_map = token_store.put(telegram_user_id, items)
-    await update.message.reply_text(_render_due(items, token_map, cfg.timezone))
+    await update.message.reply_text(
+        _render_due(items, token_map, cfg.timezone), parse_mode=ParseMode.HTML
+    )
 
 
 async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -314,30 +372,33 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     token = context.args[0].upper()
     ref = token_store.get(telegram_user_id, token)
     if ref is None:
-        await update.message.reply_text("Unknown/expired token. Run /due again.")
+        await update.message.reply_text("⚠️ Unknown/expired token. Run /due again.")
         return
     ok = complete_review(cfg.db_path, telegram_user_id, ref.user_problem_id, ref.review_day)
     if not ok:
-        await update.message.reply_text("Could not mark done. Run /due again.")
+        await update.message.reply_text("⚠️ Could not mark done. Run /due again.")
         return
-    await update.message.reply_text(f"Marked complete: {token}")
+    await update.message.reply_text(f"✅ Marked complete: {token}")
 
 
 def _render_problem_rows(rows: list[dict[str, str]], timezone_name: str) -> str:
-    lines = []
-    lines.append("Your Problems")
-    lines.append("")
+    table_rows: list[list[str]] = []
     for idx, row in enumerate(rows, start=1):
-        solved_at = _format_timestamp(row["solved_at"], timezone_name)
-        lines.append(
-            (
-                f"{idx}. {row['title']}\n"
-                f"   Difficulty: {row['difficulty'].title()}\n"
-                f"   Pattern: {row['pattern']}\n"
-                f"   Solved: {solved_at}"
-            )
+        table_rows.append(
+            [
+                str(idx),
+                row["title"],
+                row["difficulty"].title(),
+                row["pattern"],
+                _format_timestamp_compact(row["solved_at"], timezone_name),
+            ]
         )
-    return "\n".join(lines)
+    table = _make_table(
+        headers=["#", "Title", "Diff", "Pattern", "Solved"],
+        rows=table_rows,
+        widths=[3, 28, 6, 12, 16],
+    )
+    return f"📚 <b>Your Problems</b>\n<pre>{escape(table)}</pre>"
 
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -349,9 +410,11 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     query = " ".join(context.args)
     rows = search_problems(cfg.db_path, telegram_user_id, query)
     if not rows:
-        await update.message.reply_text("No matching problems.")
+        await update.message.reply_text("🔎 No matching problems.")
         return
-    await update.message.reply_text(_render_problem_rows(rows, cfg.timezone))
+    await update.message.reply_text(
+        _render_problem_rows(rows, cfg.timezone), parse_mode=ParseMode.HTML
+    )
 
 
 async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -363,9 +426,11 @@ async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     pattern = " ".join(context.args)
     rows = list_by_pattern(cfg.db_path, telegram_user_id, pattern)
     if not rows:
-        await update.message.reply_text("No problems for this pattern.")
+        await update.message.reply_text("🧠 No problems for this pattern.")
         return
-    await update.message.reply_text(_render_problem_rows(rows, cfg.timezone))
+    await update.message.reply_text(
+        _render_problem_rows(rows, cfg.timezone), parse_mode=ParseMode.HTML
+    )
 
 
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -373,9 +438,17 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     telegram_user_id = _telegram_user_id(update)
     rows = list_all_problems(cfg.db_path, telegram_user_id)
     if not rows:
-        await update.message.reply_text("No logged problems yet.")
+        await update.message.reply_text("🗂️ No logged problems yet.")
         return
-    await update.message.reply_text(_render_problem_rows(rows, cfg.timezone))
+    await update.message.reply_text(
+        _render_problem_rows(rows, cfg.timezone), parse_mode=ParseMode.HTML
+    )
+
+
+async def default_text_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "👋 I’m here. Try /help to see available commands."
+    )
 
 
 def build_application(config: AppConfig) -> Application:
@@ -412,6 +485,7 @@ def build_application(config: AppConfig) -> Application:
     )
 
     app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("register", register_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(log_flow)
     app.add_handler(CommandHandler("due", due_command))
@@ -419,6 +493,7 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("pattern", pattern_command))
     app.add_handler(CommandHandler("list", list_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, default_text_command))
     return app
 
 
