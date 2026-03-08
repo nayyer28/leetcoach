@@ -14,6 +14,16 @@ This document defines Telegram command behavior for the current app interface.
 - `/list`
 - `/pattern <pattern>`
 
+## Access Control
+
+Behavior:
+- bot checks `LEETCOACH_ALLOWED_USER_IDS` against Telegram `user_id`
+- empty allow list: open mode (any user)
+- non-empty allow list: only listed users can execute commands
+
+Blocked response:
+- `⛔ Access denied for this bot.`
+
 ## `/start`
 
 Purpose:

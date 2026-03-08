@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import unittest
 
+from leetcoach.config import AppConfig
 from leetcoach.services.due_tokens import ReviewToken
 from leetcoach.services.query_service import DueReviewItem
 from leetcoach.telegram_bot import (
     _format_timestamp,
+    _is_user_allowed,
     _leetcode_url,
     _neetcode_url,
     _normalize_solved_at,
@@ -38,6 +40,27 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
             "https://neetcode.io/problems/valid-binary-search-tree/question",
         )
         self.assertIsNone(_neetcode_url(None))
+
+    def test_user_allowlist_behavior(self) -> None:
+        open_cfg = AppConfig(
+            environment="development",
+            log_level="INFO",
+            timezone="UTC",
+            db_path=".local/leetcoach.db",
+            telegram_bot_token="token",
+            allowed_user_ids=frozenset(),
+        )
+        locked_cfg = AppConfig(
+            environment="development",
+            log_level="INFO",
+            timezone="UTC",
+            db_path=".local/leetcoach.db",
+            telegram_bot_token="token",
+            allowed_user_ids=frozenset({"12345"}),
+        )
+        self.assertTrue(_is_user_allowed("999", open_cfg))
+        self.assertTrue(_is_user_allowed("12345", locked_cfg))
+        self.assertFalse(_is_user_allowed("999", locked_cfg))
 
     def test_render_problem_rows_includes_header_and_human_time(self) -> None:
         rows = [

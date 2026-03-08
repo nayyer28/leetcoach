@@ -163,8 +163,28 @@ def _display_name(update: Update) -> str:
     return "there"
 
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+def _is_user_allowed(telegram_user_id: str, config: AppConfig) -> bool:
+    if not config.allowed_user_ids:
+        return True
+    return telegram_user_id in config.allowed_user_ids
+
+
+async def _ensure_authorized(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> AppConfig | None:
     cfg: AppConfig = context.application.bot_data["config"]
+    telegram_user_id = _telegram_user_id(update)
+    if _is_user_allowed(telegram_user_id, cfg):
+        return cfg
+    LOGGER.warning("Unauthorized Telegram user blocked: %s", telegram_user_id)
+    await update.message.reply_text("⛔ Access denied for this bot.")
+    return None
+
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
     is_new = _register_user(cfg.db_path, update, cfg.timezone)
     name = _display_name(update)
     if is_new:
@@ -178,7 +198,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
-async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
     await update.message.reply_text(_commands_help_text(), parse_mode=ParseMode.HTML)
 
 
@@ -187,6 +210,9 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def log_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return ConversationHandler.END
     await update.message.reply_text(_log_prompt(1, 10, "Enter problem title:"))
     context.user_data["log_payload"] = {}
     return LOG_TITLE
@@ -342,7 +368,9 @@ def _render_due(
 
 
 async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    cfg: AppConfig = context.application.bot_data["config"]
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
     token_store: DueTokenStore = context.application.bot_data["due_tokens"]
     telegram_user_id = _telegram_user_id(update)
     items = list_due_reviews(cfg.db_path, telegram_user_id)
@@ -356,7 +384,9 @@ async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    cfg: AppConfig = context.application.bot_data["config"]
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
     token_store: DueTokenStore = context.application.bot_data["due_tokens"]
     telegram_user_id = _telegram_user_id(update)
     if not context.args:
@@ -393,7 +423,9 @@ def _render_problem_rows(rows: list[dict[str, str]], timezone_name: str) -> str:
 
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    cfg: AppConfig = context.application.bot_data["config"]
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
     telegram_user_id = _telegram_user_id(update)
     if not context.args:
         await update.message.reply_text("Usage: /search <query>")
@@ -407,7 +439,9 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    cfg: AppConfig = context.application.bot_data["config"]
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
     telegram_user_id = _telegram_user_id(update)
     if not context.args:
         await update.message.reply_text("Usage: /pattern <pattern>")
@@ -421,7 +455,9 @@ async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    cfg: AppConfig = context.application.bot_data["config"]
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
     telegram_user_id = _telegram_user_id(update)
     rows = list_all_problems(cfg.db_path, telegram_user_id)
     if not rows:
@@ -430,7 +466,10 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(_render_problem_rows(rows, cfg.timezone))
 
 
-async def default_text_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+async def default_text_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
     await update.message.reply_text(
         "👋 I’m here. Try /help to see available commands."
     )
