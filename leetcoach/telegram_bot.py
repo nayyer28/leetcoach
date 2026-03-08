@@ -72,6 +72,16 @@ def _format_timestamp_compact(iso_ts: str, timezone_name: str) -> str:
     return local_dt.strftime("%d %b %H:%M %Z")
 
 
+def _leetcode_url(leetcode_slug: str) -> str:
+    return f"https://leetcode.com/problems/{leetcode_slug}/description/"
+
+
+def _neetcode_url(neetcode_slug: str | None) -> str | None:
+    if not neetcode_slug:
+        return None
+    return f"https://neetcode.io/problems/{neetcode_slug}/question"
+
+
 def _normalize_solved_at(raw_value: str, timezone_name: str) -> str | None:
     value = raw_value.strip()
     if value.lower() == "now":
@@ -321,6 +331,10 @@ def _render_due(
                 f"{_format_timestamp_compact(item.due_at, timezone_name)}"
             )
         )
+        lines.append(f"   🔗 LC: {_leetcode_url(item.leetcode_slug)}")
+        neetcode = _neetcode_url(item.neetcode_slug)
+        if neetcode:
+            lines.append(f"   🔗 NC: {neetcode}")
     lines.append("")
     lines.append("Use /done A1")
     return "\n".join(lines)
@@ -362,6 +376,8 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 def _render_problem_rows(rows: list[dict[str, str]], timezone_name: str) -> str:
     lines: list[str] = ["📚 Your Problems", ""]
     for idx, row in enumerate(rows, start=1):
+        leetcode_url = _leetcode_url(row["leetcode_slug"])
+        neetcode_url = _neetcode_url(row["neetcode_slug"] or None)
         lines.append(f"{idx}. {row['title']}")
         lines.append(
             (
@@ -369,6 +385,9 @@ def _render_problem_rows(rows: list[dict[str, str]], timezone_name: str) -> str:
                 f"{_format_timestamp_compact(row['solved_at'], timezone_name)}"
             )
         )
+        lines.append(f"   🔗 LC: {leetcode_url}")
+        if neetcode_url:
+            lines.append(f"   🔗 NC: {neetcode_url}")
     return "\n".join(lines)
 
 

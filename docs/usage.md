@@ -96,6 +96,7 @@ Notes:
 - `/log` solved-time input accepts: `now`, ISO 8601, or `YYYY-MM-DD HH:MM` (local time)
 - list/search/pattern/due responses are rendered as compact numbered cards
 - timestamps are shown in configured local timezone
+- list/search/pattern/due include LeetCode + NeetCode URLs built from slugs
 
 ## Inspect Database
 

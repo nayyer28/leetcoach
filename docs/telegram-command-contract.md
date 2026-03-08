@@ -103,6 +103,7 @@ Behavior:
 Success response:
 - compact numbered list with token, title, review day, status, due time
 - due time is rendered in configured local timezone
+- includes LeetCode and NeetCode links built from stored slugs
 
 No data response:
 - `No pending/overdue reviews.`
@@ -141,6 +142,7 @@ Behavior:
 Success response:
 - compact numbered list with title, difficulty, pattern, solved time
 - solved time is rendered in configured local timezone
+- includes LeetCode and NeetCode links built from stored slugs
 
 No data response:
 - `No matching problems.`
@@ -159,6 +161,7 @@ Behavior:
 Success response:
 - compact numbered list with title, difficulty, pattern, solved time
 - solved time is rendered in configured local timezone
+- includes LeetCode and NeetCode links built from stored slugs
 
 No data response:
 - `No logged problems yet.`
@@ -177,6 +180,7 @@ Behavior:
 Success response:
 - compact numbered list with title/difficulty/pattern/solved time
 - solved time is rendered in configured local timezone
+- includes LeetCode and NeetCode links built from stored slugs
 
 No data response:
 - `No problems for this pattern.`
