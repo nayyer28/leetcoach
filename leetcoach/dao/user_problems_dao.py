@@ -60,3 +60,56 @@ def upsert_user_problem(
         raise RuntimeError("Failed to upsert user_problem")
     return int(row["id"])
 
+
+def search_user_problems(
+    conn: sqlite3.Connection, *, user_id: int, query: str
+) -> list[sqlite3.Row]:
+    like = f"%{query.lower()}%"
+    return conn.execute(
+        """
+        SELECT
+            up.id AS user_problem_id,
+            p.title,
+            p.difficulty,
+            p.leetcode_slug,
+            p.neetcode_slug,
+            up.pattern,
+            up.solved_at
+        FROM user_problems up
+        JOIN problems p ON p.id = up.problem_id
+        WHERE up.user_id = ?
+          AND (
+            lower(p.title) LIKE ?
+            OR lower(up.pattern) LIKE ?
+            OR lower(COALESCE(up.notes, '')) LIKE ?
+            OR lower(COALESCE(up.concepts, '')) LIKE ?
+          )
+        ORDER BY up.solved_at DESC
+        LIMIT 20
+        """,
+        (user_id, like, like, like, like),
+    ).fetchall()
+
+
+def list_user_problems_by_pattern(
+    conn: sqlite3.Connection, *, user_id: int, pattern: str
+) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT
+            up.id AS user_problem_id,
+            p.title,
+            p.difficulty,
+            p.leetcode_slug,
+            p.neetcode_slug,
+            up.pattern,
+            up.solved_at
+        FROM user_problems up
+        JOIN problems p ON p.id = up.problem_id
+        WHERE up.user_id = ?
+          AND lower(up.pattern) = lower(?)
+        ORDER BY up.solved_at DESC
+        LIMIT 50
+        """,
+        (user_id, pattern),
+    ).fetchall()

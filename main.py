@@ -50,5 +50,18 @@ def test_command() -> None:
     raise SystemExit(result.returncode)
 
 
+@cli.command("bot")
+def bot_command() -> None:
+    """Run Telegram bot (long polling)."""
+    try:
+        from leetcoach.telegram_bot import run_bot
+    except ModuleNotFoundError as exc:
+        raise click.ClickException(
+            "Telegram dependencies are missing. Run: python -m pip install -e ."
+        ) from exc
+    config = load_config()
+    raise SystemExit(run_bot(config))
+
+
 if __name__ == "__main__":
     cli()

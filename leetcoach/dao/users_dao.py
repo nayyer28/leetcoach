@@ -31,3 +31,14 @@ def upsert_user(
         raise RuntimeError("Failed to upsert user")
     return int(row["id"])
 
+
+def get_user_id_by_telegram_user_id(
+    conn: sqlite3.Connection, *, telegram_user_id: str
+) -> int | None:
+    row = conn.execute(
+        "SELECT id FROM users WHERE telegram_user_id = ?",
+        (telegram_user_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return int(row["id"])
