@@ -18,9 +18,10 @@ Current phase:
 Completed:
 - data and behavior specification
 - software design document
-- CLI commands: `run`, `migrate`, `test`, `bot`
+- CLI command via entrypoint: `lch` (`run`, `migrate`, `test`, `bot`, `doctor`, `import-notion`)
 - schema migrations and DB layer
 - Telegram D1 commands: `/start`, `/register`, `/help`, guided `/log`, `/due`, `/done`, `/search`, `/list`, `/pattern`
+- container runtime baseline (`Dockerfile`, `docker-compose.yml`)
 
 Next:
 - add test coverage for Telegram/query workflows

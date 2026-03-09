@@ -12,13 +12,31 @@ source .venv/bin/activate
 python -m pip install -e .
 ```
 
+Optional global install with isolated environment (no manual venv activation):
+
+```bash
+pipx install .
+```
+
 `.env` is auto-loaded by the CLI on startup (if present in repo root).
 You can still override values by exporting env vars in the shell.
+
+After install, use the real CLI command:
+
+```bash
+lch --help
+```
+
+Legacy compatibility is still available:
+
+```bash
+python main.py --help
+```
 
 ## CLI Help
 
 ```bash
-python main.py --help
+lch --help
 ```
 
 Expected commands:
@@ -32,19 +50,19 @@ Expected commands:
 ## Run App Bootstrap
 
 ```bash
-python main.py
+lch
 ```
 
 Equivalent explicit command:
 
 ```bash
-python main.py run
+lch run
 ```
 
 ## Apply Database Migrations
 
 ```bash
-python main.py migrate
+lch migrate
 ```
 
 This applies any pending SQL files from `migrations/` and records them in `schema_migrations`.
@@ -84,7 +102,7 @@ Allow-list behavior:
 Start bot:
 
 ```bash
-python main.py bot
+lch bot
 ```
 
 Bot startup now retries transient bootstrap network failures up to 5 times before exiting.
@@ -94,7 +112,7 @@ Bot startup now retries transient bootstrap network failures up to 5 times befor
 Quick health check for config and Telegram API reachability:
 
 ```bash
-python main.py doctor
+lch doctor
 ```
 
 This validates:
@@ -154,25 +172,25 @@ sqlite3 .local/leetcoach.db "SELECT name, tbl_name FROM sqlite_master WHERE type
 ## Run Integration Tests
 
 ```bash
-python main.py test
+lch test
 ```
 
 Run only unit tests:
 
 ```bash
-python main.py test unit
+lch test unit
 ```
 
 Run only integration tests:
 
 ```bash
-python main.py test integration
+lch test integration
 ```
 
 Run a specific test target:
 
 ```bash
-python main.py test unit tests.unit.dao.test_problem_reviews_dao
+lch test unit tests.unit.dao.test_problem_reviews_dao
 ```
 
 ## Import From Notion
@@ -180,7 +198,7 @@ python main.py test unit tests.unit.dao.test_problem_reviews_dao
 Dry-run first (no DB writes):
 
 ```bash
-python main.py import-notion \
+lch import-notion \
   --root-page-url "https://www.notion.so/NeetCode-150-2f25715dd0d080348fe1f65ac7c4cbae" \
   --telegram-user-id "<your_telegram_user_id>"
 ```
@@ -188,10 +206,39 @@ python main.py import-notion \
 Apply import:
 
 ```bash
-python main.py import-notion \
+lch import-notion \
   --root-page-url "https://www.notion.so/NeetCode-150-2f25715dd0d080348fe1f65ac7c4cbae" \
   --telegram-user-id "<your_telegram_user_id>" \
   --apply
+```
+
+## Container Runtime
+
+Build image:
+
+```bash
+docker build -t leetcoach:dev .
+```
+
+Run bot via compose (with persistent SQLite volume):
+
+```bash
+docker compose up -d bot
+```
+
+Run one-off commands in container:
+
+```bash
+docker compose run --rm bot migrate
+docker compose run --rm bot doctor
+docker compose run --rm bot test unit
+docker compose run --rm bot import-notion --root-page-url "<url>" --telegram-user-id "<id>" --apply
+```
+
+Stop bot:
+
+```bash
+docker compose down
 ```
 
 Notes:
@@ -220,5 +267,5 @@ Notes:
     - `pkill -f "python.*main.py bot"`
 
 - startup fails with `telegram.error.NetworkError: httpx.ReadError`
-  - run `python main.py doctor` and check `telegram_getMe`
+  - run `lch doctor` and check `telegram_getMe`
   - if doctor fails, verify network/VPN/proxy and retry
