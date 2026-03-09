@@ -13,7 +13,7 @@ Deferred:
 - attempts/history table
 - trivia/flashcards
 - dashboard
-- Notion importer implementation (mapping only)
+- outbound reminder scheduler/dispatcher loop
 
 ## Entity Relationship Model
 
@@ -183,8 +183,8 @@ Status is derived (not stored):
 - `overdue`: now > `buffer_until` and not done
 
 Reminder policy:
-- send reminders for pending checkpoints once per day until completed or overdue
-- use `last_reminded_at` to prevent duplicates in the same day
+- target behavior (pending implementation): send reminders for pending checkpoints once per day until completed or overdue
+- target behavior (pending implementation): use `last_reminded_at` to prevent duplicates in the same day
 
 ## Command Contract (MVP)
 
@@ -233,3 +233,7 @@ Importer behavior (future):
 - resolve canonical problem first by provider slug match when available
 - fallback to title review/manual confirmation when slug is missing
 - then upsert per-user row in `user_problems`
+
+Current status:
+- Notion importer is implemented via `lch import-notion` (dry-run + apply)
+- mapping rules above represent the importer's intended source-to-target shape
