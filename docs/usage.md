@@ -214,19 +214,19 @@ lch import-notion \
 
 ## Container Runtime
 
-Build image:
-
-```bash
-docker build -t leetcoach:dev .
-```
-
-Run bot via compose (with persistent SQLite volume):
+Start bot container (builds image if missing):
 
 ```bash
 docker compose up -d bot
 ```
 
-Run one-off commands in container:
+Force rebuild before start (recommended after dependency/code changes):
+
+```bash
+docker compose up -d --build bot
+```
+
+Run one-off CLI commands in container:
 
 ```bash
 docker compose run --rm bot migrate
@@ -235,11 +235,30 @@ docker compose run --rm bot test unit
 docker compose run --rm bot import-notion --root-page-url "<url>" --telegram-user-id "<id>" --apply
 ```
 
+Open an interactive shell in the app container:
+
+```bash
+docker compose exec bot sh
+```
+
+Then run commands directly inside container:
+
+```bash
+lch --help
+lch migrate
+lch doctor
+```
+
 Stop bot:
 
 ```bash
 docker compose down
 ```
+
+Compose/build behavior note:
+- `docker compose up -d bot` builds if image is not present
+- it may not rebuild when files changed and an image already exists
+- use `docker compose up -d --build bot` when you want guaranteed rebuild
 
 Notes:
 - requires a Notion token env var (default env key: `MCP_BEARER_TOKEN`)
