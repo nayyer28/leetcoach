@@ -72,6 +72,52 @@ def list_due_reviews_for_user(
     ).fetchall()
 
 
+def list_pending_review_candidates(
+    conn: sqlite3.Connection, *, now_iso: str
+) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT
+            pr.id AS review_id,
+            pr.user_problem_id,
+            pr.review_day,
+            pr.due_at,
+            pr.buffer_until,
+            pr.last_reminded_at,
+            up.solved_at,
+            p.title,
+            p.leetcode_slug,
+            p.neetcode_slug,
+            u.telegram_chat_id,
+            u.timezone
+        FROM problem_reviews pr
+        JOIN user_problems up ON up.id = pr.user_problem_id
+        JOIN problems p ON p.id = up.problem_id
+        JOIN users u ON u.id = up.user_id
+        WHERE pr.completed_at IS NULL
+          AND pr.due_at <= ?
+          AND pr.buffer_until >= ?
+        ORDER BY pr.due_at ASC
+        """,
+        (now_iso, now_iso),
+    ).fetchall()
+
+
+def mark_review_reminded(
+    conn: sqlite3.Connection, *, review_id: int, reminded_at: str
+) -> bool:
+    cur = conn.execute(
+        """
+        UPDATE problem_reviews
+        SET last_reminded_at = ?, updated_at = ?
+        WHERE id = ?
+          AND completed_at IS NULL
+        """,
+        (reminded_at, reminded_at, review_id),
+    )
+    return cur.rowcount > 0
+
+
 def mark_review_done(
     conn: sqlite3.Connection,
     *,

@@ -12,6 +12,7 @@ from leetcoach.config import load_config
 from leetcoach.db.migrate import migrate_database
 from leetcoach.env import load_environment
 from leetcoach.notion_importer import run_import
+from leetcoach.reminder_scheduler import run_scheduler_loop, run_scheduler_once
 
 
 @click.group(invoke_without_command=True, help="Leetcoach CLI")
@@ -130,6 +131,39 @@ def bot_command() -> None:
     raise SystemExit(run_bot(config))
 
 
+@cli.command("scheduler")
+@click.option("--once", is_flag=True, help="Run one scheduler tick and exit.")
+@click.option(
+    "--interval-seconds",
+    default=60,
+    show_default=True,
+    type=int,
+    help="Loop interval when running continuously.",
+)
+def scheduler_command(once: bool, interval_seconds: int) -> None:
+    """Run reminder scheduler loop (outbound Telegram reminders)."""
+    config = load_config()
+    if once:
+        stats = run_scheduler_once(config=config, progress=click.echo)
+        click.echo(
+            (
+                f"[scheduler] scanned={stats.scanned} sent={stats.sent} "
+                f"skipped={stats.skipped_already_reminded_today} failed={stats.failed}"
+            )
+        )
+        raise SystemExit(0 if stats.failed == 0 else 1)
+    click.echo(
+        f"[scheduler] starting loop (interval_seconds={interval_seconds})"
+    )
+    try:
+        run_scheduler_loop(
+            config=config, interval_seconds=interval_seconds, progress=click.echo
+        )
+    except KeyboardInterrupt:
+        click.echo("[scheduler] stopped by user")
+        raise SystemExit(0)
+
+
 @cli.command("doctor")
 def doctor_command() -> None:
     """Check local config and Telegram connectivity."""
@@ -197,4 +231,3 @@ def import_notion_command(
     click.echo(f"Parsed valid: {stats.parsed_valid}")
     click.echo(f"Parsed invalid: {stats.parsed_invalid}")
     click.echo(f"Inserted/updated: {stats.inserted_or_updated}")
-

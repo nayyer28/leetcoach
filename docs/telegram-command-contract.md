@@ -1,6 +1,7 @@
 # Telegram Command Contract
 
 This document defines Telegram command behavior for the current app interface.
+Outbound reminders are delivered by the scheduler process (`lch scheduler`), not by an inbound Telegram command.
 
 ## Command List
 
@@ -119,6 +120,18 @@ Success response:
 
 No data response:
 - `No pending/overdue reviews.`
+
+## Outbound Reminder Messages (Scheduler)
+
+Source:
+- periodic scheduler loop (`lch scheduler`) querying pending review checkpoints
+
+Behavior:
+- sends reminder for pending checkpoints (`due_at <= now <= buffer_until`)
+- de-duplicates by local user day using `last_reminded_at`
+- includes first-attempt time, due time, and checkpoint day
+- includes LeetCode/NeetCode links when available
+- instructs user to run `/due` and then `/done <token> <7th|21st>`
 
 ## `/done <token> <7th|21st>`
 

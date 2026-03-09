@@ -13,7 +13,6 @@ Deferred:
 - attempts/history table
 - trivia/flashcards
 - dashboard
-- outbound reminder scheduler/dispatcher loop
 
 ## Entity Relationship Model
 
@@ -183,8 +182,8 @@ Status is derived (not stored):
 - `overdue`: now > `buffer_until` and not done
 
 Reminder policy:
-- target behavior (pending implementation): send reminders for pending checkpoints once per day until completed or overdue
-- target behavior (pending implementation): use `last_reminded_at` to prevent duplicates in the same day
+- send reminders for pending checkpoints (`due_at <= now <= buffer_until`)
+- use `last_reminded_at` to prevent duplicates in the same local user day
 
 ## Command Contract (MVP)
 
@@ -215,6 +214,11 @@ Reminder policy:
 
 - `/pattern <pattern_name>`
   - lists user problems from `user_problems` by case-insensitive partial pattern match
+
+- `lch scheduler`
+  - scans pending checkpoints
+  - sends Telegram reminder messages
+  - updates `last_reminded_at` on successful send
 
 ## Notion Mapping (Design Only)
 
