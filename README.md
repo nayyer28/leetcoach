@@ -20,12 +20,13 @@ Completed:
 - software design document
 - CLI command via entrypoint: `lch` (`run`, `migrate`, `test`, `bot`, `doctor`, `import-notion`)
 - schema migrations and DB layer
-- Telegram D1 commands: `/start`, `/register`, `/help`, guided `/log`, `/due`, `/done`, `/search`, `/list`, `/pattern`
+- Telegram D1 commands: `/start`, `/register`, `/help`, guided `/log`, `/due`, `/done <token> <7th|21st>`, `/search`, `/list`, `/pattern`
 - container runtime baseline (`Dockerfile`, `docker-compose.yml`)
+- Notion import command and parsing pipeline
+- CI workflow for advisory unit/integration test runs on PRs
 
 Next:
-- add test coverage for Telegram/query workflows
-- implement reminder scheduler loop (D2)
+- implement reminder scheduler loop and outbound Telegram reminders
 
 ## Developer Tooling
 

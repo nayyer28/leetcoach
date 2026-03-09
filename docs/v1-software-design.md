@@ -7,7 +7,7 @@ For data model and command behavior, see [`docs/v1-spec.md`](docs/v1-spec.md).
 
 ```mermaid
 flowchart LR
-    A["Interface Layer (CLI now, Telegram later)"] --> B["Service Layer"]
+    A["Interface Layer (LCH CLI + Telegram handlers)"] --> B["Service Layer"]
     B --> C["DAO Layer"]
     C --> D["SQLite (embedded file DB)"]
     E["Migration Runner"] --> D
@@ -23,9 +23,10 @@ No layer skips downward boundaries.
 ## Layers and Responsibilities
 
 ### Interface Layer
-- entrypoint: `main.py`
-- currently supports: `run`, `migrate`, `test`, `bot`
-- includes Telegram command handlers for: `/start`, `/register`, `/help`, `/log`, `/due`, `/done`, `/search`, `/list`, `/pattern`
+- primary entrypoint: `lch` (`project.scripts` -> `leetcoach.cli:cli`)
+- compatibility entrypoint: `python main.py` (wrapper that calls same CLI)
+- current CLI commands: `run`, `migrate`, `test`, `bot`, `doctor`, `import-notion`
+- Telegram handlers: `/start`, `/register`, `/help`, `/log`, `/due`, `/done <token> <7th|21st>`, `/search`, `/list`, `/pattern`
 
 ### Service Layer
 - implements use-cases (for example: log problem)
@@ -41,3 +42,10 @@ No layer skips downward boundaries.
 - SQLite file storage
 - migrations define/upgrade schema
 - `schema_migrations` tracks applied migration files
+
+## Runtime Modes
+
+- local process mode: run CLI/bot directly on host (`lch ...`)
+- container mode: same CLI and bot commands executed via Docker image/compose
+
+Both modes use the same layered design and SQLite schema.
