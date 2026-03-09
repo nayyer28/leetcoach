@@ -96,10 +96,9 @@ def list_pending_review_candidates(
         JOIN users u ON u.id = up.user_id
         WHERE pr.completed_at IS NULL
           AND pr.due_at <= ?
-          AND pr.buffer_until >= ?
         ORDER BY pr.due_at ASC
         """,
-        (now_iso, now_iso),
+        (now_iso,),
     ).fetchall()
 
 

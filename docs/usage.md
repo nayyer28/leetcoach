@@ -84,6 +84,8 @@ Set bot token in `.env` (recommended):
 ```env
 LEETCOACH_TELEGRAM_BOT_TOKEN=<your-token>
 LEETCOACH_ALLOWED_USER_IDS=<telegram_user_id_1>,<telegram_user_id_2>
+LEETCOACH_REMINDER_HOUR_LOCAL=8
+LEETCOACH_REMINDER_DAILY_MAX=2
 ```
 
 Or export in the shell (overrides `.env`):
@@ -136,7 +138,13 @@ lch scheduler --interval-seconds 60
 ```
 
 Scheduler behavior:
-- scans pending review checkpoints (`due_at <= now <= buffer_until`)
+- scans due review checkpoints (`due_at <= now`) and classifies pending vs overdue
+- sends only at configured local hour (`LEETCOACH_REMINDER_HOUR_LOCAL`, default `8`)
+- picks up to `LEETCOACH_REMINDER_DAILY_MAX` per day (default `2`) with balanced priority:
+  - up to one pending checkpoint
+  - up to one overdue backlog checkpoint
+  - fills remaining slots by oldest due date
+- sends a daily header message first for clear demarcation
 - sends reminder messages via Telegram Bot API
 - updates `last_reminded_at` on successful send
 - avoids duplicate reminders within the same local user day

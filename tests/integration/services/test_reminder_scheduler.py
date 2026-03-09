@@ -43,12 +43,16 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
                 db_path=str(db_path),
                 telegram_bot_token="123:token",
                 allowed_user_ids=frozenset(),
+                reminder_hour_local=9,
+                reminder_daily_max=2,
             )
             now_iso = "2026-02-10T09:00:00+00:00"
             first = run_scheduler_once(config=cfg, now_iso=now_iso)
             self.assertEqual(first.sent, 1)
             self.assertEqual(first.failed, 0)
-            self.assertEqual(mock_send.call_count, 1)
+            self.assertEqual(mock_send.call_count, 2)
+            first_message_text = mock_send.call_args_list[0].args[2]
+            self.assertIn("Daily LeetCoach Review Plan", first_message_text)
 
             with get_connection(str(db_path)) as conn:
                 row = conn.execute(
@@ -60,7 +64,43 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             second = run_scheduler_once(config=cfg, now_iso="2026-02-10T09:30:00+00:00")
             self.assertEqual(second.sent, 0)
             self.assertEqual(second.skipped_already_reminded_today, 1)
-            self.assertEqual(mock_send.call_count, 1)
+            self.assertEqual(mock_send.call_count, 2)
+
+    @patch("leetcoach.reminder_scheduler._send_telegram_message")
+    def test_run_once_respects_send_hour(self, mock_send) -> None:
+        mock_send.return_value = (True, "ok")
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "leetcoach-test.db"
+            migrate_database(str(db_path))
+            log_problem(
+                str(db_path),
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="UTC",
+                    title="Two Sum",
+                    difficulty="easy",
+                    leetcode_slug="two-sum",
+                    neetcode_slug="two-sum",
+                    pattern="arrays",
+                    solved_at="2026-02-01T10:00:00+00:00",
+                    notes="",
+                ),
+            )
+            cfg = AppConfig(
+                environment="test",
+                log_level="INFO",
+                timezone="UTC",
+                db_path=str(db_path),
+                telegram_bot_token="123:token",
+                allowed_user_ids=frozenset(),
+                reminder_hour_local=8,
+                reminder_daily_max=2,
+            )
+            stats = run_scheduler_once(config=cfg, now_iso="2026-02-10T09:00:00+00:00")
+            self.assertEqual(stats.sent, 0)
+            self.assertEqual(stats.skipped_outside_send_hour, 1)
+            self.assertEqual(mock_send.call_count, 0)
 
     @patch("leetcoach.reminder_scheduler._send_telegram_message")
     def test_run_once_records_failed_send_and_does_not_mark_reminded(self, mock_send) -> None:

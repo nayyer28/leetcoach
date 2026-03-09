@@ -148,7 +148,8 @@ def scheduler_command(once: bool, interval_seconds: int) -> None:
         click.echo(
             (
                 f"[scheduler] scanned={stats.scanned} sent={stats.sent} "
-                f"skipped={stats.skipped_already_reminded_today} failed={stats.failed}"
+                f"skipped={stats.skipped_already_reminded_today} "
+                f"outside_hour={stats.skipped_outside_send_hour} failed={stats.failed}"
             )
         )
         raise SystemExit(0 if stats.failed == 0 else 1)

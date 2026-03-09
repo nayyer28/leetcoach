@@ -127,8 +127,13 @@ Source:
 - periodic scheduler loop (`lch scheduler`) querying pending review checkpoints
 
 Behavior:
-- sends reminder for pending checkpoints (`due_at <= now <= buffer_until`)
+- sends reminders for due checkpoints (`due_at <= now`) with priority balancing:
+  - pending checkpoints first
+  - then overdue backlog (oldest first)
+- daily max reminder picks are controlled by `LEETCOACH_REMINDER_DAILY_MAX` (default `2`)
+- sends only at local hour `LEETCOACH_REMINDER_HOUR_LOCAL` (default `8`)
 - de-duplicates by local user day using `last_reminded_at`
+- sends a header message first so subsequent messages are clearly marked as reminder picks
 - includes first-attempt time, due time, and checkpoint day
 - includes LeetCode/NeetCode links when available
 - instructs user to run `/due` and then `/done <token> <7th|21st>`
