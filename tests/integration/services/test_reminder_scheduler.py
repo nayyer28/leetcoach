@@ -131,6 +131,8 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
                 db_path=str(db_path),
                 telegram_bot_token="123:token",
                 allowed_user_ids=frozenset(),
+                reminder_hour_local=9,
+                reminder_daily_max=2,
             )
             stats = run_scheduler_once(config=cfg, now_iso="2026-02-10T09:00:00+00:00")
             self.assertEqual(stats.sent, 0)
@@ -146,7 +148,7 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
 
     @patch("leetcoach.reminder_scheduler._send_telegram_message")
     def test_run_once_continues_after_single_send_failure(self, mock_send) -> None:
-        mock_send.side_effect = [(False, "network error"), (True, "ok")]
+        mock_send.side_effect = [(True, "ok"), (False, "network error"), (True, "ok")]
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "leetcoach-test.db"
             migrate_database(str(db_path))
@@ -189,11 +191,13 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
                 db_path=str(db_path),
                 telegram_bot_token="123:token",
                 allowed_user_ids=frozenset(),
+                reminder_hour_local=9,
+                reminder_daily_max=2,
             )
             stats = run_scheduler_once(config=cfg, now_iso="2026-02-10T09:00:00+00:00")
             self.assertEqual(stats.sent, 1)
             self.assertEqual(stats.failed, 1)
-            self.assertEqual(mock_send.call_count, 2)
+            self.assertEqual(mock_send.call_count, 3)
 
     def test_pending_candidates_are_due_sorted_and_exclude_expired_or_completed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -277,16 +281,21 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
                     conn, now_iso="2026-02-19T12:00:00+00:00"
                 )
 
-            # We should only see due+active reviews sorted by due_at asc:
-            # - Longest Substring day-7 (due 2026-02-18)
-            # - Contains Duplicate day-7 (due 2026-02-19)
+            # We should see due+active reviews sorted by due_at asc, including overdue backlog:
+            # - Merge Two Sorted Lists day-7 (old overdue)
+            # - Merge Two Sorted Lists day-21 (old overdue)
+            # - Longest Substring day-7
+            # - Contains Duplicate day-7
             # - Two Sum day-21 (due 2026-02-22) is not due yet and excluded
-            # - Merge Two Sorted Lists windows are expired and excluded
-            self.assertEqual(len(rows), 2)
-            self.assertEqual(str(rows[0]["title"]), "Longest Substring")
+            self.assertEqual(len(rows), 4)
+            self.assertEqual(str(rows[0]["title"]), "Merge Two Sorted Lists")
             self.assertEqual(int(rows[0]["review_day"]), 7)
-            self.assertEqual(str(rows[1]["title"]), "Contains Duplicate")
-            self.assertEqual(int(rows[1]["review_day"]), 7)
+            self.assertEqual(str(rows[1]["title"]), "Merge Two Sorted Lists")
+            self.assertEqual(int(rows[1]["review_day"]), 21)
+            self.assertEqual(str(rows[2]["title"]), "Longest Substring")
+            self.assertEqual(int(rows[2]["review_day"]), 7)
+            self.assertEqual(str(rows[3]["title"]), "Contains Duplicate")
+            self.assertEqual(int(rows[3]["review_day"]), 7)
 
 
 if __name__ == "__main__":
