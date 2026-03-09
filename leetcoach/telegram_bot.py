@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from telegram import LinkPreviewOptions, Update
 from telegram.constants import ParseMode
-from telegram.error import Conflict
+from telegram.error import Conflict, NetworkError
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -37,6 +37,7 @@ from leetcoach.services.query_service import (
 
 LOGGER = logging.getLogger("leetcoach.telegram")
 TELEGRAM_MESSAGE_CHUNK_SIZE = 3500
+BOT_BOOTSTRAP_RETRIES = 5
 UNKNOWN_PATTERN_LEVEL = 999
 
 # NeetCode roadmap-inspired ordering; same-level groups are alphabetical.
@@ -689,11 +690,21 @@ def run_bot(config: AppConfig) -> int:
     application = build_application(config)
     LOGGER.info("Starting Telegram bot polling")
     try:
-        application.run_polling(close_loop=False, bootstrap_retries=0)
+        application.run_polling(
+            close_loop=False,
+            bootstrap_retries=BOT_BOOTSTRAP_RETRIES,
+        )
     except Conflict:
         LOGGER.error(
             "Telegram polling conflict at startup. Ensure only one bot process "
             "is running for this token."
+        )
+        return 1
+    except NetworkError as exc:
+        LOGGER.error(
+            "Telegram network error during startup after retries (%d): %s",
+            BOT_BOOTSTRAP_RETRIES,
+            exc,
         )
         return 1
     return 0

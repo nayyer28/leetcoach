@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import click
+import json
 import subprocess
 import sys
+from urllib import error, request
 
 from leetcoach.app import run
 from leetcoach.config import load_config
@@ -73,6 +75,45 @@ def test_command(suite: str, target: str | None) -> None:
     raise SystemExit(result.returncode)
 
 
+def _mask_token(token: str | None) -> str:
+    if not token:
+        return "missing"
+    if len(token) <= 10:
+        return "***"
+    return f"{token[:8]}...{token[-4:]}"
+
+
+def _check_telegram_get_me(token: str | None, timeout_seconds: float = 10.0) -> tuple[bool, str]:
+    if not token:
+        return False, "LEETCOACH_TELEGRAM_BOT_TOKEN is missing"
+
+    url = f"https://api.telegram.org/bot{token}/getMe"
+    req = request.Request(url, method="GET")
+    try:
+        with request.urlopen(req, timeout=timeout_seconds) as resp:
+            body = resp.read().decode("utf-8")
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        return False, f"HTTP {exc.code}: {detail}"
+    except error.URLError as exc:
+        return False, f"Network error: {exc.reason}"
+    except TimeoutError:
+        return False, "Request timed out"
+
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return False, f"Invalid JSON response: {body[:200]}"
+
+    if payload.get("ok") is True:
+        result = payload.get("result") or {}
+        username = result.get("username", "unknown")
+        bot_id = result.get("id", "unknown")
+        return True, f"Telegram API reachable (bot @{username}, id={bot_id})"
+
+    return False, f"Telegram API responded with error payload: {payload}"
+
+
 @cli.command("bot")
 def bot_command() -> None:
     """Run Telegram bot (long polling)."""
@@ -84,6 +125,24 @@ def bot_command() -> None:
         ) from exc
     config = load_config()
     raise SystemExit(run_bot(config))
+
+
+@cli.command("doctor")
+def doctor_command() -> None:
+    """Check local config and Telegram connectivity."""
+    config = load_config()
+    click.echo("LeetCoach Doctor")
+    click.echo(f"- env: {config.environment}")
+    click.echo(f"- timezone: {config.timezone}")
+    click.echo(f"- db_path: {config.db_path}")
+    click.echo(f"- allowed_user_ids: {len(config.allowed_user_ids)} configured")
+    click.echo(f"- telegram_token: {_mask_token(config.telegram_bot_token)}")
+
+    ok, detail = _check_telegram_get_me(config.telegram_bot_token)
+    status = "OK" if ok else "FAIL"
+    click.echo(f"- telegram_getMe: {status} ({detail})")
+
+    raise SystemExit(0 if ok else 1)
 
 
 @cli.command("import-notion")
