@@ -182,8 +182,15 @@ Status is derived (not stored):
 - `overdue`: now > `buffer_until` and not done
 
 Reminder policy:
-- send reminders for pending checkpoints (`due_at <= now <= buffer_until`)
-- use `last_reminded_at` to prevent duplicates in the same local user day
+- scheduler scans due checkpoints (`due_at <= now`) and classifies pending vs overdue
+- scheduler sends only at configured local hour (`LEETCOACH_REMINDER_HOUR_LOCAL`, default `8`)
+- scheduler sends up to configured daily max (`LEETCOACH_REMINDER_DAILY_MAX`, default `2`) per user/day
+- scheduler uses balanced picks:
+  - up to one pending checkpoint
+  - up to one overdue backlog checkpoint
+  - fill remaining slots by oldest due date
+- scheduler sends a daily demarcation/header message before reminder entries
+- scheduler uses `last_reminded_at` to prevent duplicates in the same local user day
 
 ## Command Contract (MVP)
 

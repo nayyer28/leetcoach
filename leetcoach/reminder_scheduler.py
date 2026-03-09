@@ -40,6 +40,7 @@ class ReminderRunStats:
     scanned: int
     sent: int
     skipped_already_reminded_today: int
+    skipped_outside_send_hour: int
     failed: int
 
 
@@ -67,6 +68,11 @@ def should_send_today(candidate: ReminderCandidate, now_iso: str) -> bool:
     return _local_date(candidate.last_reminded_at, candidate.timezone) < _local_date(
         now_iso, candidate.timezone
     )
+
+
+def _is_send_hour(timezone_name: str, now_iso: str, target_hour_local: int) -> bool:
+    local_dt = _parse_iso(now_iso).astimezone(_resolve_timezone(timezone_name))
+    return local_dt.hour == target_hour_local
 
 
 def _format_compact(iso_ts: str, timezone_name: str) -> str:
@@ -105,6 +111,13 @@ def build_reminder_message(candidate: ReminderCandidate) -> str:
         lines.append(f"🔗 NC: {nc}")
     lines.append("Use /due, then /done <token> " + day_label)
     return "\n".join(lines)
+
+
+def build_daily_header_message() -> str:
+    return (
+        "📌 Daily LeetCoach Review Plan\n"
+        "All messages below this are today’s reminder picks."
+    )
 
 
 def _send_telegram_message(token: str, chat_id: str, text: str) -> tuple[bool, str]:
@@ -167,42 +180,99 @@ def run_scheduler_once(
 
         sent = 0
         skipped = 0
+        skipped_hour = 0
         failed = 0
-        for candidate in candidates:
-            if not should_send_today(candidate, now):
-                skipped += 1
+
+        by_chat: dict[tuple[str, str], list[ReminderCandidate]] = {}
+        for c in candidates:
+            by_chat.setdefault((c.telegram_chat_id, c.timezone), []).append(c)
+
+        for (chat_id, timezone), group in by_chat.items():
+            if not _is_send_hour(timezone, now, config.reminder_hour_local):
+                skipped_hour += len(group)
                 continue
-            text = build_reminder_message(candidate)
-            ok, detail = _send_telegram_message(
-                config.telegram_bot_token, candidate.telegram_chat_id, text
+
+            due_and_unsent = [c for c in group if should_send_today(c, now)]
+            skipped += len(group) - len(due_and_unsent)
+            if not due_and_unsent:
+                continue
+
+            # Keep one candidate per problem to avoid sending two checkpoints for same problem in one day.
+            unique_by_problem: dict[int, ReminderCandidate] = {}
+            for c in sorted(due_and_unsent, key=lambda item: datetime.fromisoformat(item.due_at)):
+                unique_by_problem.setdefault(c.user_problem_id, c)
+            unique = list(unique_by_problem.values())
+
+            def _is_pending(c: ReminderCandidate) -> bool:
+                return _parse_iso(now) <= _parse_iso(c.buffer_until)
+
+            pending = sorted(
+                [c for c in unique if _is_pending(c)],
+                key=lambda item: _parse_iso(item.due_at),
             )
-            if not ok:
+            overdue = sorted(
+                [c for c in unique if not _is_pending(c)],
+                key=lambda item: _parse_iso(item.due_at),
+            )
+
+            selected: list[ReminderCandidate] = []
+            if pending:
+                selected.append(pending[0])
+            if overdue and len(selected) < config.reminder_daily_max:
+                selected.append(overdue[0])
+            for c in pending[1:] + overdue[1:]:
+                if len(selected) >= config.reminder_daily_max:
+                    break
+                selected.append(c)
+
+            if not selected:
+                continue
+
+            header_ok, header_detail = _send_telegram_message(
+                config.telegram_bot_token, chat_id, build_daily_header_message()
+            )
+            if not header_ok:
                 failed += 1
                 LOGGER.error(
-                    "Reminder send failed (review_id=%s, chat_id=%s): %s",
-                    candidate.review_id,
-                    candidate.telegram_chat_id,
-                    detail,
+                    "Reminder header send failed (chat_id=%s): %s",
+                    chat_id,
+                    header_detail,
                 )
                 continue
 
-            marked = mark_review_reminded(
-                conn, review_id=candidate.review_id, reminded_at=now
-            )
-            if marked:
-                sent += 1
-                if progress:
-                    progress(
-                        f"[scheduler] sent review_id={candidate.review_id} day={candidate.review_day}"
+            for candidate in selected:
+                text = build_reminder_message(candidate)
+                ok, detail = _send_telegram_message(
+                    config.telegram_bot_token, candidate.telegram_chat_id, text
+                )
+                if not ok:
+                    failed += 1
+                    LOGGER.error(
+                        "Reminder send failed (review_id=%s, chat_id=%s): %s",
+                        candidate.review_id,
+                        candidate.telegram_chat_id,
+                        detail,
                     )
-            else:
-                failed += 1
+                    continue
+
+                marked = mark_review_reminded(
+                    conn, review_id=candidate.review_id, reminded_at=now
+                )
+                if marked:
+                    sent += 1
+                    if progress:
+                        progress(
+                            f"[scheduler] sent review_id={candidate.review_id} day={candidate.review_day}"
+                        )
+                else:
+                    failed += 1
 
         conn.commit()
     return ReminderRunStats(
         scanned=len(candidates),
         sent=sent,
         skipped_already_reminded_today=skipped,
+        skipped_outside_send_hour=skipped_hour,
         failed=failed,
     )
 
@@ -222,8 +292,8 @@ def run_scheduler_loop(
             progress(
                 (
                     f"[scheduler] scanned={stats.scanned} sent={stats.sent} "
-                    f"skipped={stats.skipped_already_reminded_today} failed={stats.failed}"
+                    f"skipped={stats.skipped_already_reminded_today} "
+                    f"outside_hour={stats.skipped_outside_send_hour} failed={stats.failed}"
                 )
             )
         time.sleep(interval_seconds)
-
