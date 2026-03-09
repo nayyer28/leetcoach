@@ -44,6 +44,7 @@ Expected commands:
 - `migrate`
 - `test`
 - `bot`
+- `scheduler`
 - `doctor`
 - `import-notion`
 
@@ -119,6 +120,26 @@ This validates:
 - token presence (masked in output)
 - DB path/timezone/allow-list visibility
 - Telegram `getMe` API connectivity
+
+## Reminder Scheduler
+
+Run one scheduler tick and exit:
+
+```bash
+lch scheduler --once
+```
+
+Run continuous scheduler loop (default 60 seconds):
+
+```bash
+lch scheduler --interval-seconds 60
+```
+
+Scheduler behavior:
+- scans pending review checkpoints (`due_at <= now <= buffer_until`)
+- sends reminder messages via Telegram Bot API
+- updates `last_reminded_at` on successful send
+- avoids duplicate reminders within the same local user day
 
 ### 4) Start chat with your bot
 
@@ -214,16 +235,16 @@ lch import-notion \
 
 ## Container Runtime
 
-Start bot container (builds image if missing):
+Start bot + scheduler containers (builds image if missing):
 
 ```bash
-docker compose up -d bot
+docker compose up -d bot scheduler
 ```
 
 Force rebuild before start (recommended after dependency/code changes):
 
 ```bash
-docker compose up -d --build bot
+docker compose up -d --build bot scheduler
 ```
 
 Run one-off CLI commands in container:
@@ -233,6 +254,7 @@ docker compose run --rm bot migrate
 docker compose run --rm bot doctor
 docker compose run --rm bot test unit
 docker compose run --rm bot import-notion --root-page-url "<url>" --telegram-user-id "<id>" --apply
+docker compose run --rm bot scheduler --once
 ```
 
 Open an interactive shell in the app container:
@@ -288,3 +310,8 @@ Notes:
 - startup fails with `telegram.error.NetworkError: httpx.ReadError`
   - run `lch doctor` and check `telegram_getMe`
   - if doctor fails, verify network/VPN/proxy and retry
+
+- scheduler sends duplicate reminders
+  - verify `users.timezone` values are valid
+  - inspect `problem_reviews.last_reminded_at` in DB
+  - run `lch scheduler --once` to observe one-tick behavior

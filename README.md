@@ -24,9 +24,10 @@ Completed:
 - container runtime baseline (`Dockerfile`, `docker-compose.yml`)
 - Notion import command and parsing pipeline
 - CI workflow for advisory unit/integration test runs on PRs
+- reminder scheduler loop + outbound Telegram reminders (`lch scheduler`)
 
 Next:
-- implement reminder scheduler loop and outbound Telegram reminders
+- trivia/flashcards learning mode
 
 ## Developer Tooling
 
