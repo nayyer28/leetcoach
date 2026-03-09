@@ -156,6 +156,48 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
             text,
         )
 
+    def test_render_due_sorts_overdue_first_then_due_date(self) -> None:
+        items = [
+            DueReviewItem(
+                user_problem_id=30,
+                review_day=21,
+                title="Pending Later",
+                leetcode_slug="l3",
+                neetcode_slug="n3",
+                due_at="2026-03-12T10:00:00+00:00",
+                buffer_until="2026-03-14T10:00:00+00:00",
+                status="pending",
+            ),
+            DueReviewItem(
+                user_problem_id=20,
+                review_day=7,
+                title="Overdue Newer",
+                leetcode_slug="l2",
+                neetcode_slug="n2",
+                due_at="2026-03-08T10:00:00+00:00",
+                buffer_until="2026-03-10T10:00:00+00:00",
+                status="overdue",
+            ),
+            DueReviewItem(
+                user_problem_id=10,
+                review_day=7,
+                title="Overdue Older",
+                leetcode_slug="l1",
+                neetcode_slug="n1",
+                due_at="2026-03-06T10:00:00+00:00",
+                buffer_until="2026-03-08T10:00:00+00:00",
+                status="overdue",
+            ),
+        ]
+        token_map = {
+            "A1": ReviewToken(user_problem_id=10, review_day=7),
+            "A2": ReviewToken(user_problem_id=20, review_day=7),
+            "A3": ReviewToken(user_problem_id=30, review_day=21),
+        }
+        text = _render_due(items, token_map, "UTC")
+        self.assertLess(text.find("Overdue Older"), text.find("Overdue Newer"))
+        self.assertLess(text.find("Overdue Newer"), text.find("Pending Later"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -432,8 +432,15 @@ def _render_due(
     items: list[DueReviewItem], token_map: dict[str, ReviewToken], timezone_name: str
 ) -> str:
     rev_lookup = {(v.user_problem_id, v.review_day): k for k, v in token_map.items()}
+    sorted_items = sorted(
+        items,
+        key=lambda item: (
+            0 if item.status == "overdue" else 1,
+            datetime.fromisoformat(item.due_at),
+        ),
+    )
     lines: list[str] = ["⏰ Due Reviews", ""]
-    for idx, item in enumerate(items, start=1):
+    for idx, item in enumerate(sorted_items, start=1):
         token = rev_lookup[(item.user_problem_id, item.review_day)]
         lines.append(
             f"{idx}. [{token}] {item.title}"
