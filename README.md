@@ -25,9 +25,13 @@ Completed:
 - Notion import command and parsing pipeline
 - CI workflow for advisory unit/integration test runs on PRs
 - reminder scheduler loop + outbound Telegram reminders (`lch scheduler`)
+- scheduler preflight/doctor command and observability counters (`lch scheduler-doctor`)
 
 Next:
 - trivia/flashcards learning mode
+
+v1 acceptance checklist:
+- maintained in [`docs/v1-spec.md`](docs/v1-spec.md) under `V1 Acceptance Checklist`
 
 ## Developer Tooling
 

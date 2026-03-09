@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 import json
 import logging
+import sqlite3
 import time
 from urllib import error, parse, request
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -42,6 +43,15 @@ class ReminderRunStats:
     skipped_already_reminded_today: int
     skipped_outside_send_hour: int
     failed: int
+    due_and_unsent: int
+    selected: int
+    header_sent: int
+
+
+@dataclass(frozen=True)
+class SchedulerPreflightResult:
+    ok: bool
+    issues: tuple[str, ...]
 
 
 def _resolve_timezone(timezone_name: str) -> ZoneInfo:
@@ -120,6 +130,50 @@ def build_daily_header_message() -> str:
     )
 
 
+def _required_tables_exist(conn: sqlite3.Connection) -> tuple[bool, tuple[str, ...]]:
+    expected = {
+        "schema_migrations",
+        "users",
+        "problems",
+        "user_problems",
+        "problem_reviews",
+    }
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()
+    found = {str(r["name"]) for r in rows}
+    missing = tuple(sorted(expected - found))
+    return (len(missing) == 0, missing)
+
+
+def scheduler_preflight(config: AppConfig) -> SchedulerPreflightResult:
+    issues: list[str] = []
+    if not config.telegram_bot_token:
+        issues.append("LEETCOACH_TELEGRAM_BOT_TOKEN is missing")
+    if not (0 <= config.reminder_hour_local <= 23):
+        issues.append(
+            f"LEETCOACH_REMINDER_HOUR_LOCAL out of range: {config.reminder_hour_local}"
+        )
+    if config.reminder_daily_max < 1:
+        issues.append(
+            f"LEETCOACH_REMINDER_DAILY_MAX must be >= 1 (got {config.reminder_daily_max})"
+        )
+
+    try:
+        with get_connection(config.db_path) as conn:
+            tables_ok, missing = _required_tables_exist(conn)
+            if not tables_ok:
+                issues.append(
+                    "Database schema missing required tables: "
+                    + ", ".join(missing)
+                    + " (run `lch migrate`)"
+                )
+    except sqlite3.Error as exc:
+        issues.append(f"Database open/validation failed: {exc}")
+
+    return SchedulerPreflightResult(ok=len(issues) == 0, issues=tuple(issues))
+
+
 def _send_telegram_message(token: str, chat_id: str, text: str) -> tuple[bool, str]:
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     body = parse.urlencode(
@@ -152,8 +206,9 @@ def run_scheduler_once(
     now_iso: str | None = None,
     progress: callable | None = None,
 ) -> ReminderRunStats:
-    if not config.telegram_bot_token:
-        raise RuntimeError("LEETCOACH_TELEGRAM_BOT_TOKEN is not configured")
+    preflight = scheduler_preflight(config)
+    if not preflight.ok:
+        raise RuntimeError("Scheduler preflight failed: " + " | ".join(preflight.issues))
 
     now = now_iso or datetime.now(UTC).isoformat()
     with get_connection(config.db_path) as conn:
@@ -182,6 +237,9 @@ def run_scheduler_once(
         skipped = 0
         skipped_hour = 0
         failed = 0
+        due_and_unsent_total = 0
+        selected_total = 0
+        header_sent = 0
 
         by_chat: dict[tuple[str, str], list[ReminderCandidate]] = {}
         for c in candidates:
@@ -193,6 +251,7 @@ def run_scheduler_once(
                 continue
 
             due_and_unsent = [c for c in group if should_send_today(c, now)]
+            due_and_unsent_total += len(due_and_unsent)
             skipped += len(group) - len(due_and_unsent)
             if not due_and_unsent:
                 continue
@@ -227,6 +286,27 @@ def run_scheduler_once(
 
             if not selected:
                 continue
+            selected_total += len(selected)
+
+            LOGGER.info(
+                "[scheduler.chat] %s",
+                json.dumps(
+                    {
+                        "chat_id": chat_id,
+                        "timezone": timezone,
+                        "group_size": len(group),
+                        "due_and_unsent": len(due_and_unsent),
+                        "selected": len(selected),
+                        "pending_selected": sum(
+                            1 for c in selected if _parse_iso(now) <= _parse_iso(c.buffer_until)
+                        ),
+                        "overdue_selected": sum(
+                            1 for c in selected if _parse_iso(now) > _parse_iso(c.buffer_until)
+                        ),
+                    },
+                    sort_keys=True,
+                ),
+            )
 
             header_ok, header_detail = _send_telegram_message(
                 config.telegram_bot_token, chat_id, build_daily_header_message()
@@ -239,6 +319,7 @@ def run_scheduler_once(
                     header_detail,
                 )
                 continue
+            header_sent += 1
 
             for candidate in selected:
                 text = build_reminder_message(candidate)
@@ -268,12 +349,31 @@ def run_scheduler_once(
                     failed += 1
 
         conn.commit()
+    LOGGER.info(
+        "[scheduler.run] %s",
+        json.dumps(
+            {
+                "scanned": len(candidates),
+                "due_and_unsent": due_and_unsent_total,
+                "selected": selected_total,
+                "header_sent": header_sent,
+                "sent": sent,
+                "skipped_already_reminded_today": skipped,
+                "skipped_outside_send_hour": skipped_hour,
+                "failed": failed,
+            },
+            sort_keys=True,
+        ),
+    )
     return ReminderRunStats(
         scanned=len(candidates),
         sent=sent,
         skipped_already_reminded_today=skipped,
         skipped_outside_send_hour=skipped_hour,
         failed=failed,
+        due_and_unsent=due_and_unsent_total,
+        selected=selected_total,
+        header_sent=header_sent,
     )
 
 

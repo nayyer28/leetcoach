@@ -50,6 +50,9 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             first = run_scheduler_once(config=cfg, now_iso=now_iso)
             self.assertEqual(first.sent, 1)
             self.assertEqual(first.failed, 0)
+            self.assertEqual(first.header_sent, 1)
+            self.assertEqual(first.selected, 1)
+            self.assertEqual(first.due_and_unsent, 1)
             self.assertEqual(mock_send.call_count, 2)
             first_message_text = mock_send.call_args_list[0].args[2]
             self.assertIn("Daily LeetCoach Review Plan", first_message_text)
@@ -100,6 +103,8 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             stats = run_scheduler_once(config=cfg, now_iso="2026-02-10T09:00:00+00:00")
             self.assertEqual(stats.sent, 0)
             self.assertEqual(stats.skipped_outside_send_hour, 1)
+            self.assertEqual(stats.header_sent, 0)
+            self.assertEqual(stats.selected, 0)
             self.assertEqual(mock_send.call_count, 0)
 
     @patch("leetcoach.reminder_scheduler._send_telegram_message")

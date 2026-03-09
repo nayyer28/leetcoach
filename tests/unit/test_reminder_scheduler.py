@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from pathlib import Path
+import tempfile
 import unittest
 
+from leetcoach.config import AppConfig
+from leetcoach.db.migrate import migrate_database
 from leetcoach.reminder_scheduler import (
     ReminderCandidate,
     build_daily_header_message,
     build_reminder_message,
+    scheduler_preflight,
     should_send_today,
 )
 
@@ -87,6 +92,60 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
         text = build_daily_header_message()
         self.assertIn("Daily LeetCoach Review Plan", text)
         self.assertIn("messages below", text.lower())
+
+    def test_scheduler_preflight_fails_when_token_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "leetcoach-test.db"
+            migrate_database(str(db_path))
+            cfg = AppConfig(
+                environment="test",
+                log_level="INFO",
+                timezone="UTC",
+                db_path=str(db_path),
+                telegram_bot_token=None,
+                allowed_user_ids=frozenset(),
+                reminder_hour_local=8,
+                reminder_daily_max=2,
+            )
+            result = scheduler_preflight(cfg)
+            self.assertFalse(result.ok)
+            self.assertTrue(
+                any("LEETCOACH_TELEGRAM_BOT_TOKEN is missing" in issue for issue in result.issues)
+            )
+
+    def test_scheduler_preflight_fails_on_unmigrated_db(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "leetcoach-test.db"
+            cfg = AppConfig(
+                environment="test",
+                log_level="INFO",
+                timezone="UTC",
+                db_path=str(db_path),
+                telegram_bot_token="123:token",
+                allowed_user_ids=frozenset(),
+                reminder_hour_local=8,
+                reminder_daily_max=2,
+            )
+            result = scheduler_preflight(cfg)
+            self.assertFalse(result.ok)
+            self.assertTrue(any("run `lch migrate`" in issue for issue in result.issues))
+
+    def test_scheduler_preflight_ok_after_migrate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "leetcoach-test.db"
+            migrate_database(str(db_path))
+            cfg = AppConfig(
+                environment="test",
+                log_level="INFO",
+                timezone="UTC",
+                db_path=str(db_path),
+                telegram_bot_token="123:token",
+                allowed_user_ids=frozenset(),
+                reminder_hour_local=8,
+                reminder_daily_max=2,
+            )
+            result = scheduler_preflight(cfg)
+            self.assertTrue(result.ok)
 
 
 if __name__ == "__main__":
