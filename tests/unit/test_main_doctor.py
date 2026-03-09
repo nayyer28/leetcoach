@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 
+from click.testing import CliRunner
+
+from leetcoach.cli import cli
 from leetcoach.cli import _check_telegram_get_me, _mask_token
+from leetcoach.db.migrate import migrate_database
 
 
 class MainDoctorUnitTest(unittest.TestCase):
@@ -51,6 +57,37 @@ class MainDoctorUnitTest(unittest.TestCase):
         ok, detail = _check_telegram_get_me("123:token")
         self.assertFalse(ok)
         self.assertIn("HTTP 404", detail)
+
+    def test_scheduler_doctor_fails_on_unmigrated_db(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "leetcoach-test.db"
+            env = {
+                "LEETCOACH_DB_PATH": str(db_path),
+                "LEETCOACH_TELEGRAM_BOT_TOKEN": "123:token",
+                "LEETCOACH_REMINDER_HOUR_LOCAL": "8",
+                "LEETCOACH_REMINDER_DAILY_MAX": "2",
+            }
+            runner = CliRunner()
+            with patch.dict("os.environ", env, clear=False):
+                result = runner.invoke(cli, ["scheduler-doctor"])
+            self.assertNotEqual(result.exit_code, 0)
+            self.assertIn("scheduler_preflight: FAIL", result.output)
+
+    def test_scheduler_doctor_ok_after_migrate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "leetcoach-test.db"
+            migrate_database(str(db_path))
+            env = {
+                "LEETCOACH_DB_PATH": str(db_path),
+                "LEETCOACH_TELEGRAM_BOT_TOKEN": "123:token",
+                "LEETCOACH_REMINDER_HOUR_LOCAL": "8",
+                "LEETCOACH_REMINDER_DAILY_MAX": "2",
+            }
+            runner = CliRunner()
+            with patch.dict("os.environ", env, clear=False):
+                result = runner.invoke(cli, ["scheduler-doctor"])
+            self.assertEqual(result.exit_code, 0)
+            self.assertIn("scheduler_preflight: OK", result.output)
 
 
 if __name__ == "__main__":

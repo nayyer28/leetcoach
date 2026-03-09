@@ -12,7 +12,11 @@ from leetcoach.config import load_config
 from leetcoach.db.migrate import migrate_database
 from leetcoach.env import load_environment
 from leetcoach.notion_importer import run_import
-from leetcoach.reminder_scheduler import run_scheduler_loop, run_scheduler_once
+from leetcoach.reminder_scheduler import (
+    run_scheduler_loop,
+    run_scheduler_once,
+    scheduler_preflight,
+)
 
 
 @click.group(invoke_without_command=True, help="Leetcoach CLI")
@@ -143,13 +147,22 @@ def bot_command() -> None:
 def scheduler_command(once: bool, interval_seconds: int) -> None:
     """Run reminder scheduler loop (outbound Telegram reminders)."""
     config = load_config()
+    preflight = scheduler_preflight(config)
+    if not preflight.ok:
+        for issue in preflight.issues:
+            click.echo(f"[scheduler.preflight] FAIL: {issue}")
+        raise SystemExit(1)
+    click.echo("[scheduler.preflight] OK")
+
     if once:
         stats = run_scheduler_once(config=config, progress=click.echo)
         click.echo(
             (
                 f"[scheduler] scanned={stats.scanned} sent={stats.sent} "
                 f"skipped={stats.skipped_already_reminded_today} "
-                f"outside_hour={stats.skipped_outside_send_hour} failed={stats.failed}"
+                f"outside_hour={stats.skipped_outside_send_hour} failed={stats.failed} "
+                f"due_unsent={stats.due_and_unsent} selected={stats.selected} "
+                f"header_sent={stats.header_sent}"
             )
         )
         raise SystemExit(0 if stats.failed == 0 else 1)
@@ -163,6 +176,27 @@ def scheduler_command(once: bool, interval_seconds: int) -> None:
     except KeyboardInterrupt:
         click.echo("[scheduler] stopped by user")
         raise SystemExit(0)
+
+
+@cli.command("scheduler-doctor")
+def scheduler_doctor_command() -> None:
+    """Validate scheduler preflight state (token, db schema, scheduler config)."""
+    config = load_config()
+    click.echo("LeetCoach Scheduler Doctor")
+    click.echo(f"- db_path: {config.db_path}")
+    click.echo(f"- reminder_hour_local: {config.reminder_hour_local}")
+    click.echo(f"- reminder_daily_max: {config.reminder_daily_max}")
+    click.echo(f"- telegram_token: {_mask_token(config.telegram_bot_token)}")
+
+    result = scheduler_preflight(config)
+    if result.ok:
+        click.echo("- scheduler_preflight: OK")
+        raise SystemExit(0)
+
+    click.echo("- scheduler_preflight: FAIL")
+    for issue in result.issues:
+        click.echo(f"  - {issue}")
+    raise SystemExit(1)
 
 
 @cli.command("doctor")

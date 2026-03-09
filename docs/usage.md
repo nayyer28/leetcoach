@@ -45,6 +45,7 @@ Expected commands:
 - `test`
 - `bot`
 - `scheduler`
+- `scheduler-doctor`
 - `doctor`
 - `import-notion`
 
@@ -125,6 +126,17 @@ This validates:
 
 ## Reminder Scheduler
 
+Validate scheduler readiness (token + db schema + scheduler config):
+
+```bash
+lch scheduler-doctor
+```
+
+This command is local-only and checks:
+- `LEETCOACH_TELEGRAM_BOT_TOKEN` presence
+- DB contains required tables (`schema_migrations`, `users`, `problems`, `user_problems`, `problem_reviews`)
+- scheduler config values are sane (`reminder_hour_local`, `reminder_daily_max`)
+
 Run one scheduler tick and exit:
 
 ```bash
@@ -138,6 +150,7 @@ lch scheduler --interval-seconds 60
 ```
 
 Scheduler behavior:
+- runs a preflight check before each run/loop and exits early on failure
 - scans due review checkpoints (`due_at <= now`) and classifies pending vs overdue
 - sends only at configured local hour (`LEETCOACH_REMINDER_HOUR_LOCAL`, default `8`)
 - picks up to `LEETCOACH_REMINDER_DAILY_MAX` per day (default `2`) with balanced priority:
@@ -148,6 +161,8 @@ Scheduler behavior:
 - sends reminder messages via Telegram Bot API
 - updates `last_reminded_at` on successful send
 - avoids duplicate reminders within the same local user day
+- emits per-run observability counters:
+  - `scanned`, `due_unsent`, `selected`, `header_sent`, `sent`, `skipped`, `outside_hour`, `failed`
 
 ### 4) Start chat with your bot
 

@@ -248,3 +248,22 @@ Importer behavior (future):
 Current status:
 - Notion importer is implemented via `lch import-notion` (dry-run + apply)
 - mapping rules above represent the importer's intended source-to-target shape
+
+## V1 Acceptance Checklist
+
+- [x] Canonical data model implemented (`users`, `problems`, `user_problems`, `problem_reviews`)
+- [x] Migrations are idempotent and applied through `lch migrate`
+- [x] Telegram logging flow works (`/log`) with day-7/day-21 checkpoint creation
+- [x] Retrieval commands work (`/list`, `/search`, `/pattern`)
+- [x] Due/complete flow works (`/due`, `/done <token> <7th|21st>`)
+- [x] Reminder scheduler works with daily local-hour gate and daily quota
+- [x] Scheduler balances pending + overdue selection and dedupes within local day
+- [x] Scheduler startup preflight is available (`lch scheduler-doctor`) and enforced by `lch scheduler`
+- [x] Notion importer supports dry-run and apply (`lch import-notion`)
+- [x] Container runtime supports bot + scheduler services
+- [x] Unit + integration tests are present and runnable via `lch test`
+
+Out of scope for v1:
+- trivia/flashcards mode
+- analytics/dashboard views
+- production deployment runbook automation
