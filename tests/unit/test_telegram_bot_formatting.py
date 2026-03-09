@@ -96,6 +96,37 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
             text,
         )
 
+    def test_render_problem_rows_groups_patterns_in_roadmap_order(self) -> None:
+        rows = [
+            {
+                "title": "Graph Valid Tree",
+                "difficulty": "medium",
+                "pattern": "Graphs",
+                "solved_at": "2026-03-08T13:28:44+00:00",
+                "leetcode_slug": "graph-valid-tree",
+                "neetcode_slug": "graph-valid-tree",
+            },
+            {
+                "title": "Contains Duplicate",
+                "difficulty": "easy",
+                "pattern": "Arrays and Hashing",
+                "solved_at": "2026-03-08T13:28:44+00:00",
+                "leetcode_slug": "contains-duplicate",
+                "neetcode_slug": "contains-duplicate",
+            },
+            {
+                "title": "Binary Tree Right Side View",
+                "difficulty": "medium",
+                "pattern": "Tree DFS",
+                "solved_at": "2026-03-08T13:28:44+00:00",
+                "leetcode_slug": "binary-tree-right-side-view",
+                "neetcode_slug": "binary-tree-right-side-view",
+            },
+        ]
+        text = _render_problem_rows(rows, "Europe/Berlin")
+        self.assertLess(text.find("🧩 Arrays & Hashing"), text.find("🧩 Trees"))
+        self.assertLess(text.find("🧩 Trees"), text.find("🧩 Graphs"))
+
     def test_render_due_includes_header_token_and_human_time(self) -> None:
         items = [
             DueReviewItem(
