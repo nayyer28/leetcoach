@@ -113,13 +113,15 @@ Telegram command details (input/behavior/examples) are defined in:
 - [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
 
 Current command set:
-- `/start`, `/register`, `/help`, guided `/log`, `/due`, `/done <token>`, `/search <query>`, `/list`, `/pattern <pattern-substring>`
+- `/start`, `/register`, `/help`, guided `/log`, `/due`, `/done <token> <7th|21st>`, `/search <query>`, `/list`, `/pattern <pattern-substring>`
 
 Notes:
 - `/start` is register-or-welcome: first call registers, later calls welcome you back
 - `/log` solved-time input accepts: `now`, ISO 8601, or `YYYY-MM-DD HH:MM` (local time)
 - list/search/pattern responses are grouped by pattern and ordered by NeetCode roadmap progression
 - list/search/pattern/due responses are rendered as compact numbered cards
+- `/due` shows one token per problem with day-7/day-21 checkpoints under that problem
+- `/done` requires both token and checkpoint day (example: `/done A1 7th`)
 - timestamps are shown in configured local timezone
 - list/search/pattern/due include LeetCode + NeetCode URLs built from slugs
 - Telegram link previews are disabled globally to avoid noisy URL cards in chat
@@ -207,7 +209,7 @@ Notes:
   - check `LEETCOACH_DB_PATH`
   - default is `.local/leetcoach.db`
 
-- `/done <token>` says unknown/expired token
+- `/done <token> <7th|21st>` says unknown/expired token
   - run `/due` again to refresh short tokens
 
 - `telegram.error.Conflict: terminated by other getUpdates request`

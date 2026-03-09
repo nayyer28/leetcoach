@@ -20,6 +20,7 @@ class DueReviewItem:
     title: str
     leetcode_slug: str | None
     neetcode_slug: str | None
+    solved_at: str
     due_at: str
     buffer_until: str
     status: str
@@ -63,6 +64,7 @@ def list_due_reviews(db_path: str, telegram_user_id: str) -> list[DueReviewItem]
                 neetcode_slug=(
                     str(row["neetcode_slug"]) if row["neetcode_slug"] else None
                 ),
+                solved_at=str(row["solved_at"]),
                 due_at=str(row["due_at"]),
                 buffer_until=str(row["buffer_until"]),
                 status=_status_for(now_iso, str(row["due_at"]), str(row["buffer_until"])),

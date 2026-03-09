@@ -202,7 +202,7 @@ Reminder policy:
 - `/due`
   - lists user checkpoints in `pending` or `overdue`
 
-- `/done <token>`
+- `/done <token> <7th|21st>`
   - marks one checkpoint complete (`completed_at = now`)
   - token is resolved from the latest `/due` output for the current user
 
