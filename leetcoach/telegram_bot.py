@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 from datetime import UTC, datetime
 from html import escape
@@ -23,7 +24,7 @@ from telegram.ext import (
 from leetcoach.config import AppConfig
 from leetcoach.dao.users_dao import get_user_id_by_telegram_user_id, upsert_user
 from leetcoach.db.connection import get_connection
-from leetcoach.services.due_tokens import DueTokenStore, ReviewToken
+from leetcoach.services.due_tokens import DueTokenStore, ProblemToken
 from leetcoach.services.log_problem_service import LogProblemInput, log_problem
 from leetcoach.services.query_service import (
     DueReviewItem,
@@ -84,6 +85,17 @@ ROADMAP_PATTERN_ALIASES: dict[str, str] = {
     "math and geometry": "math geometry",
     "bitwise": "bit manipulation",
 }
+
+
+@dataclass(frozen=True)
+class DueProblemEntry:
+    user_problem_id: int
+    title: str
+    leetcode_slug: str | None
+    neetcode_slug: str | None
+    solved_at: str
+    checkpoints: dict[int, DueReviewItem]
+
 
 (
     LOG_TITLE,
@@ -185,7 +197,7 @@ def _commands_help_text() -> str:
         "• /log\n\n"
         "⏰ <b>Review</b>\n"
         "• /due\n"
-        "• /done A1\n\n"
+        "• /done A1 7th\n\n"
         "📚 <b>Browse</b>\n"
         "• /list\n"
         "• /pattern &lt;text&gt;\n"
@@ -429,37 +441,77 @@ async def log_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 def _render_due(
-    items: list[DueReviewItem], token_map: dict[str, ReviewToken], timezone_name: str
+    entries: list[DueProblemEntry], token_map: dict[str, ProblemToken], timezone_name: str
 ) -> str:
-    rev_lookup = {(v.user_problem_id, v.review_day): k for k, v in token_map.items()}
-    sorted_items = sorted(
-        items,
-        key=lambda item: (
-            0 if item.status == "overdue" else 1,
-            datetime.fromisoformat(item.due_at),
-        ),
-    )
+    rev_lookup = {v.user_problem_id: k for k, v in token_map.items()}
     lines: list[str] = ["⏰ Due Reviews", ""]
-    for idx, item in enumerate(sorted_items, start=1):
-        token = rev_lookup[(item.user_problem_id, item.review_day)]
+    for idx, entry in enumerate(entries, start=1):
+        token = rev_lookup[entry.user_problem_id]
+        lines.append(f"{idx}. [{token}] {entry.title}")
         lines.append(
-            f"{idx}. [{token}] {item.title}"
+            f"   First attempt • {_format_timestamp_compact(entry.solved_at, timezone_name)}"
         )
-        lines.append(
-            (
-                f"   Day {item.review_day} • {item.status.upper()} • "
-                f"{_format_timestamp_compact(item.due_at, timezone_name)}"
+        for review_day in (7, 21):
+            checkpoint = entry.checkpoints.get(review_day)
+            if checkpoint is None:
+                continue
+            lines.append(
+                (
+                    f"   Day {review_day} • {checkpoint.status.upper()} • "
+                    f"{_format_timestamp_compact(checkpoint.due_at, timezone_name)}"
+                )
             )
-        )
-        leetcode = _leetcode_url(item.leetcode_slug)
+        leetcode = _leetcode_url(entry.leetcode_slug)
         if leetcode:
             lines.append(f"   🔗 LC: {leetcode}")
-        neetcode = _neetcode_url(item.neetcode_slug)
+        neetcode = _neetcode_url(entry.neetcode_slug)
         if neetcode:
             lines.append(f"   🔗 NC: {neetcode}")
+        lines.append("")
+    if lines and not lines[-1]:
+        lines.pop()
     lines.append("")
-    lines.append("Use /done A1")
+    lines.append("Use /done A1 7th")
     return "\n".join(lines)
+
+
+def _group_due_entries(items: list[DueReviewItem]) -> list[DueProblemEntry]:
+    grouped: dict[int, DueProblemEntry] = {}
+    for item in items:
+        entry = grouped.get(item.user_problem_id)
+        if entry is None:
+            grouped[item.user_problem_id] = DueProblemEntry(
+                user_problem_id=item.user_problem_id,
+                title=item.title,
+                leetcode_slug=item.leetcode_slug,
+                neetcode_slug=item.neetcode_slug,
+                solved_at=item.solved_at,
+                checkpoints={item.review_day: item},
+            )
+            continue
+        entry.checkpoints[item.review_day] = item
+
+    def _sort_key(entry: DueProblemEntry) -> tuple[int, datetime]:
+        overdue_due = [
+            datetime.fromisoformat(cp.due_at)
+            for cp in entry.checkpoints.values()
+            if cp.status == "overdue"
+        ]
+        if overdue_due:
+            return (0, min(overdue_due))
+        all_due = [datetime.fromisoformat(cp.due_at) for cp in entry.checkpoints.values()]
+        return (1, min(all_due))
+
+    return sorted(grouped.values(), key=_sort_key)
+
+
+def _parse_review_day(raw: str) -> int | None:
+    value = raw.strip().lower()
+    if value in {"7", "7th"}:
+        return 7
+    if value in {"21", "21st"}:
+        return 21
+    return None
 
 
 async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -474,8 +526,11 @@ async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "✅ No pending/overdue reviews right now.\nUse /list to see your logged problems."
         )
         return
-    token_map = token_store.put(telegram_user_id, items)
-    await _reply_long_text(update, _render_due(items, token_map, cfg.timezone))
+    entries = _group_due_entries(items)
+    token_map = token_store.put(
+        telegram_user_id, [entry.user_problem_id for entry in entries]
+    )
+    await _reply_long_text(update, _render_due(entries, token_map, cfg.timezone))
 
 
 async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -484,19 +539,31 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     token_store: DueTokenStore = context.application.bot_data["due_tokens"]
     telegram_user_id = _telegram_user_id(update)
-    if not context.args:
-        await update.message.reply_text("Usage: /done <token> (example: /done A1)")
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "Usage: /done <token> <7th|21st> (example: /done A1 7th)"
+        )
         return
     token = context.args[0].upper()
-    ref = token_store.get(telegram_user_id, token)
-    if ref is None:
+    review_day = _parse_review_day(context.args[1])
+    if review_day is None:
+        await update.message.reply_text(
+            "Review day must be 7th or 21st. Example: /done A1 21st"
+        )
+        return
+    problem_ref = token_store.get(telegram_user_id, token)
+    if problem_ref is None:
         await update.message.reply_text("⚠️ Unknown/expired token. Run /due again.")
         return
-    ok = complete_review(cfg.db_path, telegram_user_id, ref.user_problem_id, ref.review_day)
+    ok = complete_review(
+        cfg.db_path, telegram_user_id, problem_ref.user_problem_id, review_day
+    )
     if not ok:
-        await update.message.reply_text("⚠️ Could not mark done. Run /due again.")
+        await update.message.reply_text(
+            "⚠️ Could not mark done for this review day. Run /due again."
+        )
         return
-    await update.message.reply_text(f"✅ Marked complete: {token}")
+    await update.message.reply_text(f"✅ Marked complete: {token} day {review_day}")
 
 
 def _render_problem_rows(rows: list[dict[str, str]], timezone_name: str) -> str:

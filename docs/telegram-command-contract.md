@@ -9,7 +9,7 @@ This document defines Telegram command behavior for the current app interface.
 - `/help`
 - `/log`
 - `/due`
-- `/done <token>`
+- `/done <token> <7th|21st>`
 - `/search <query>`
 - `/list`
 - `/pattern <pattern>`
@@ -108,7 +108,9 @@ Input:
 
 Behavior:
 - finds pending/overdue review rows for the current user
-- returns entries with short tokens `A1`, `A2`, ...
+- groups rows by problem so each problem appears once with a single token (`A1`, `A2`, ...)
+- shows day-7/day-21 checkpoints under the same problem entry (when due)
+- includes first-attempt timestamp (`solved_at`) for context
 
 Success response:
 - compact numbered list with token, title, review day, status, due time
@@ -118,17 +120,19 @@ Success response:
 No data response:
 - `No pending/overdue reviews.`
 
-## `/done <token>`
+## `/done <token> <7th|21st>`
 
 Purpose:
 - mark one due review checkpoint as completed
 
 Input:
-- short token from latest `/due` output (example: `A1`)
+- short token from latest `/due` output plus checkpoint day
+- example: `/done A1 7th` or `/done A1 21st`
 
 Behavior:
-- resolves token to `{user_problem_id, review_day}`
-- updates `completed_at` if row is still open
+- resolves token to `user_problem_id`
+- resolves day argument to `review_day` (7 or 21)
+- updates `completed_at` if the selected day row is still open
 
 Success response:
 - `Marked complete: <token>`

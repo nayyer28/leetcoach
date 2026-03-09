@@ -3,14 +3,17 @@ from __future__ import annotations
 import unittest
 
 from leetcoach.config import AppConfig
-from leetcoach.services.due_tokens import ReviewToken
+from leetcoach.services.due_tokens import ProblemToken
 from leetcoach.services.query_service import DueReviewItem
 from leetcoach.telegram_bot import (
+    DueProblemEntry,
     _chunk_text,
     _format_timestamp,
+    _group_due_entries,
     _is_user_allowed,
     _leetcode_url,
     _neetcode_url,
+    _parse_review_day,
     _normalize_solved_at,
     _render_due,
     _render_problem_rows,
@@ -135,16 +138,19 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
                 title="Validate Binary Search Tree",
                 leetcode_slug="validate-binary-search-tree",
                 neetcode_slug="valid-binary-search-tree",
+                solved_at="2026-03-08T13:28:44+00:00",
                 due_at="2026-03-15T13:28:44+00:00",
                 buffer_until="2026-03-17T13:28:44+00:00",
                 status="pending",
             )
         ]
-        token_map = {"A1": ReviewToken(user_problem_id=10, review_day=7)}
-        text = _render_due(items, token_map, "Europe/Berlin")
+        entries = _group_due_entries(items)
+        token_map = {"A1": ProblemToken(user_problem_id=10)}
+        text = _render_due(entries, token_map, "Europe/Berlin")
         self.assertIn("Due Reviews", text)
         self.assertNotIn("<pre>", text)
         self.assertIn("[A1]", text)
+        self.assertIn("First attempt", text)
         self.assertIn("PENDING", text)
         self.assertIn("15 Mar 14:28 CET", text)
         self.assertIn(
@@ -164,6 +170,7 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
                 title="Pending Later",
                 leetcode_slug="l3",
                 neetcode_slug="n3",
+                solved_at="2026-03-01T10:00:00+00:00",
                 due_at="2026-03-12T10:00:00+00:00",
                 buffer_until="2026-03-14T10:00:00+00:00",
                 status="pending",
@@ -174,6 +181,7 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
                 title="Overdue Newer",
                 leetcode_slug="l2",
                 neetcode_slug="n2",
+                solved_at="2026-03-01T10:00:00+00:00",
                 due_at="2026-03-08T10:00:00+00:00",
                 buffer_until="2026-03-10T10:00:00+00:00",
                 status="overdue",
@@ -184,19 +192,57 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
                 title="Overdue Older",
                 leetcode_slug="l1",
                 neetcode_slug="n1",
+                solved_at="2026-03-01T10:00:00+00:00",
                 due_at="2026-03-06T10:00:00+00:00",
                 buffer_until="2026-03-08T10:00:00+00:00",
                 status="overdue",
             ),
         ]
+        entries = _group_due_entries(items)
         token_map = {
-            "A1": ReviewToken(user_problem_id=10, review_day=7),
-            "A2": ReviewToken(user_problem_id=20, review_day=7),
-            "A3": ReviewToken(user_problem_id=30, review_day=21),
+            "A1": ProblemToken(user_problem_id=10),
+            "A2": ProblemToken(user_problem_id=20),
+            "A3": ProblemToken(user_problem_id=30),
         }
-        text = _render_due(items, token_map, "UTC")
-        self.assertLess(text.find("Overdue Older"), text.find("Overdue Newer"))
-        self.assertLess(text.find("Overdue Newer"), text.find("Pending Later"))
+        text = _render_due(entries, token_map, "UTC")
+        self.assertLess(text.find("[A1] Overdue Older"), text.find("[A2] Overdue Newer"))
+        self.assertLess(text.find("[A2] Overdue Newer"), text.find("[A3] Pending Later"))
+
+    def test_group_due_entries_merges_day7_and_day21(self) -> None:
+        items = [
+            DueReviewItem(
+                user_problem_id=10,
+                review_day=7,
+                title="X",
+                leetcode_slug="x",
+                neetcode_slug="x",
+                solved_at="2026-03-01T10:00:00+00:00",
+                due_at="2026-03-08T10:00:00+00:00",
+                buffer_until="2026-03-10T10:00:00+00:00",
+                status="overdue",
+            ),
+            DueReviewItem(
+                user_problem_id=10,
+                review_day=21,
+                title="X",
+                leetcode_slug="x",
+                neetcode_slug="x",
+                solved_at="2026-03-01T10:00:00+00:00",
+                due_at="2026-03-22T10:00:00+00:00",
+                buffer_until="2026-03-24T10:00:00+00:00",
+                status="pending",
+            ),
+        ]
+        entries = _group_due_entries(items)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(set(entries[0].checkpoints.keys()), {7, 21})
+
+    def test_parse_review_day(self) -> None:
+        self.assertEqual(_parse_review_day("7"), 7)
+        self.assertEqual(_parse_review_day("7th"), 7)
+        self.assertEqual(_parse_review_day("21"), 21)
+        self.assertEqual(_parse_review_day("21st"), 21)
+        self.assertIsNone(_parse_review_day("14"))
 
 
 if __name__ == "__main__":

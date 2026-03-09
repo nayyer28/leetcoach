@@ -56,6 +56,7 @@ def list_due_reviews_for_user(
             pr.due_at,
             pr.buffer_until,
             pr.completed_at,
+            up.solved_at,
             p.title,
             p.leetcode_slug,
             p.neetcode_slug
