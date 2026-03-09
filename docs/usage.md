@@ -26,6 +26,7 @@ Expected commands:
 - `migrate`
 - `test`
 - `bot`
+- `doctor`
 - `import-notion`
 
 ## Run App Bootstrap
@@ -85,6 +86,21 @@ Start bot:
 ```bash
 python main.py bot
 ```
+
+Bot startup now retries transient bootstrap network failures up to 5 times before exiting.
+
+## Doctor Check
+
+Quick health check for config and Telegram API reachability:
+
+```bash
+python main.py doctor
+```
+
+This validates:
+- token presence (masked in output)
+- DB path/timezone/allow-list visibility
+- Telegram `getMe` API connectivity
 
 ### 4) Start chat with your bot
 
@@ -200,3 +216,7 @@ Notes:
   - example process cleanup:
     - `pgrep -af "python.*main.py bot"`
     - `pkill -f "python.*main.py bot"`
+
+- startup fails with `telegram.error.NetworkError: httpx.ReadError`
+  - run `python main.py doctor` and check `telegram_getMe`
+  - if doctor fails, verify network/VPN/proxy and retry
