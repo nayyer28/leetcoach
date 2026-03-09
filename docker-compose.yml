@@ -1,0 +1,18 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: leetcoach:dev
+    container_name: leetcoach-bot
+    env_file:
+      - .env
+    environment:
+      LEETCOACH_DB_PATH: /data/leetcoach.db
+    volumes:
+      - leetcoach_data:/data
+    command: ["bot"]
+    restart: unless-stopped
+
+volumes:
+  leetcoach_data:
