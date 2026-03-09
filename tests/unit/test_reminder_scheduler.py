@@ -4,6 +4,7 @@ import unittest
 
 from leetcoach.reminder_scheduler import (
     ReminderCandidate,
+    build_daily_header_message,
     build_reminder_message,
     should_send_today,
 )
@@ -64,6 +65,11 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
         self.assertIn("LRU Cache", text)
         self.assertIn("Day 21", text)
         self.assertIn("Use /due, then /done <token> 21st", text)
+
+    def test_build_daily_header_message(self) -> None:
+        text = build_daily_header_message()
+        self.assertIn("Daily LeetCoach Review Plan", text)
+        self.assertIn("messages below", text.lower())
 
 
 if __name__ == "__main__":
