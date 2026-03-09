@@ -188,6 +188,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return
+    await update.message.reply_text(
+        "👋 Hey, I’m LeetCoach — Saahil Nayyer’s interview prep bot.\n"
+        "I’m currently for personal use only.\n"
+        "If you’d like access, please contact @nayyer28."
+    )
     is_new = _register_user(cfg.db_path, update, cfg.timezone)
     name = _display_name(update)
     if is_new:
