@@ -65,6 +65,23 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
         self.assertIn("Day 21", text)
         self.assertIn("Use /due, then /done <token> 21st", text)
 
+    def test_should_send_today_true_on_new_local_day_even_same_utc_day(self) -> None:
+        candidate = ReminderCandidate(
+            review_id=1,
+            user_problem_id=1,
+            review_day=7,
+            due_at="2026-03-08T10:00:00+00:00",
+            buffer_until="2026-03-10T10:00:00+00:00",
+            last_reminded_at="2026-03-09T09:30:00+00:00",
+            solved_at="2026-03-01T10:00:00+00:00",
+            title="X",
+            leetcode_slug="x",
+            neetcode_slug="x",
+            telegram_chat_id="chat-1",
+            timezone="Pacific/Kiritimati",
+        )
+        self.assertTrue(should_send_today(candidate, "2026-03-09T10:15:00+00:00"))
+
 
 if __name__ == "__main__":
     unittest.main()
