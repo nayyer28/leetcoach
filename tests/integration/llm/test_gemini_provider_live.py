@@ -37,7 +37,7 @@ class GeminiProviderLiveIntegrationTest(unittest.TestCase):
             "Return only valid JSON with keys: "
             "topic, question, options, correct_option, why_correct, why_others_wrong, concept_takeaway. "
             "options must be an object with A,B,C,D keys. "
-            "why_others_wrong must be an object with A,B,C,D keys. "
+            "why_others_wrong must be an object with entries for all incorrect options only. "
             "No markdown fences. Topic should be arrays."
         )
         result = provider.generate_text(prompt)
@@ -53,13 +53,19 @@ class GeminiProviderLiveIntegrationTest(unittest.TestCase):
 
         options = payload.get("options")
         self.assertIsInstance(options, dict)
-        for key in ("A", "B", "C", "D"):
+        option_keys = ("A", "B", "C", "D")
+        for key in option_keys:
             self.assertIn(key, options)
+
+        correct_option = payload.get("correct_option")
+        self.assertIn(correct_option, option_keys)
 
         why_others_wrong = payload.get("why_others_wrong")
         self.assertIsInstance(why_others_wrong, dict)
-        for key in ("A", "B", "C", "D"):
+        expected_wrong = {key for key in option_keys if key != correct_option}
+        for key in expected_wrong:
             self.assertIn(key, why_others_wrong)
+        self.assertTrue(set(why_others_wrong).issubset(set(option_keys)))
 
     def test_live_fallback_from_invalid_model_to_valid_model(self) -> None:
         provider = GeminiProvider(
@@ -75,4 +81,3 @@ class GeminiProviderLiveIntegrationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
