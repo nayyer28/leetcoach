@@ -237,6 +237,14 @@ Run a specific test target:
 lch test unit tests.unit.dao.test_problem_reviews_dao
 ```
 
+Run live Gemini integration tests (manual, not for CI):
+
+```bash
+export LEETCOACH_RUN_LIVE_TESTS=1
+export GEMINI_API_KEY="<your_key>"
+lch test integration tests.integration.llm.test_gemini_provider_live
+```
+
 ## Import From Notion
 
 Dry-run first (no DB writes):
