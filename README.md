@@ -7,6 +7,7 @@ LeetCode prep assistant focused on logging solved problems, scheduling review re
 - usage guide (setup, CLI, DB, troubleshooting): [`docs/usage.md`](docs/usage.md)
 - Telegram command contract: [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
 - v1 data model and behavior specification: [`docs/v1-spec.md`](docs/v1-spec.md)
+- v2 LLM quiz specification: [`docs/v2-spec.md`](docs/v2-spec.md)
 - v1 software design and module architecture: [`docs/v1-software-design.md`](docs/v1-software-design.md)
 - scripts usage and daily bot workflow: [`scripts/README.md`](scripts/README.md)
 
@@ -28,7 +29,7 @@ Completed:
 - scheduler preflight/doctor command and observability counters (`lch scheduler-doctor`)
 
 Next:
-- trivia/flashcards learning mode
+- v2 LLM quiz implementation from spec (`docs/v2-spec.md`)
 
 v1 acceptance checklist:
 - maintained in [`docs/v1-spec.md`](docs/v1-spec.md) under `V1 Acceptance Checklist`
