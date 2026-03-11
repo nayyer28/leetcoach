@@ -8,13 +8,14 @@ LeetCode prep assistant focused on logging solved problems, scheduling review re
 - Telegram command contract: [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
 - v1 data model and behavior specification: [`docs/v1-spec.md`](docs/v1-spec.md)
 - v2 LLM quiz specification: [`docs/v2-spec.md`](docs/v2-spec.md)
+- v3 observability/deployment draft: [`docs/v3-spec.md`](docs/v3-spec.md)
 - v1 software design and module architecture: [`docs/v1-software-design.md`](docs/v1-software-design.md)
 - scripts usage and daily bot workflow: [`scripts/README.md`](scripts/README.md)
 
 ## Project Status
 
 Current phase:
-- MVP implementation (`v1`)
+- v3 planning (observability + deployment hardening)
 
 Completed:
 - data and behavior specification
@@ -29,7 +30,8 @@ Completed:
 - scheduler preflight/doctor command and observability counters (`lch scheduler-doctor`)
 
 Next:
-- v2 follow-ups from spec (`docs/v2-spec.md`): quiz quality tuning, spaced scheduling, and progress tracking
+- v2 follow-ups from spec (`docs/v2-spec.md`): quiz quality tuning and progress tracking
+- v3 implementation from draft (`docs/v3-spec.md`)
 
 v1 acceptance checklist:
 - maintained in [`docs/v1-spec.md`](docs/v1-spec.md) under `V1 Acceptance Checklist`
