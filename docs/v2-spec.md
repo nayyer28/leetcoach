@@ -97,12 +97,14 @@ Fields:
 - `topic` TEXT NULL
 - `question_payload_json` TEXT NOT NULL
 - `model_used` TEXT NOT NULL
-- `status` TEXT NOT NULL CHECK (`status IN ('asked','answered','revealed')`)
+- `status` TEXT NOT NULL CHECK (`status IN ('asked','answered','revealed','closed')`)
 - `user_answer_text` TEXT NULL
 - `answer_feedback_json` TEXT NULL
 - `asked_at` TEXT NOT NULL
 - `answered_at` TEXT NULL
 - `revealed_at` TEXT NULL
+- `closed_at` TEXT NULL
+- `expires_at` TEXT NOT NULL
 - `created_at` TEXT NOT NULL
 - `updated_at` TEXT NOT NULL
 
@@ -114,6 +116,27 @@ Indexes/constraints:
 Notes:
 - replacing an active quiz means upsert by `user_id`
 - this is operational state, not historical event logging
+
+### Persistence Lifecycle and TTL
+
+Session lifecycle:
+- `asked` -> created by `/quiz`
+- `answered` -> set when user sends free-text answer
+- `revealed` -> set when `/reveal` is called
+- `closed` -> optional terminal state before deletion
+
+Retention policy:
+- do not hard-delete immediately after reveal
+- keep terminal sessions (`revealed` or `closed`) for a short TTL window
+- default TTL: `24h` from terminal transition
+- `expires_at` is the deletion deadline used by cleanup
+
+Cleanup behavior:
+- delete rows where `status IN ('revealed','closed') AND expires_at < now`
+- cleanup can run opportunistically at:
+  - bot startup
+  - before creating a new `/quiz` session
+- no dedicated scheduler is required for this in v2
 
 ## Prompt and Output Contracts
 
@@ -176,9 +199,11 @@ stateDiagram-v2
     asked --> answered: free-text answer
     asked --> revealed: /reveal
     answered --> revealed: /reveal
+    revealed --> closed: terminalize (optional)
     asked --> asked: /quiz (replace)
     answered --> asked: /quiz (replace)
     revealed --> asked: /quiz (replace)
+    closed --> asked: /quiz (replace)
 ```
 
 ## Acceptance Criteria (v2)
