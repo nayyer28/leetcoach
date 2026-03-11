@@ -1,86 +1,22 @@
-# Usage Guide
+# Usage Guide (Docker-First)
 
-This is the operational entrypoint for day-to-day usage.
+This is the primary runbook for running leetcoach.
 
-## Setup
+## Prerequisites
 
-Create and activate a project-local virtual environment:
+- Docker + Docker Compose v2
+- Telegram bot token from `@BotFather`
+- (optional, for quiz) Gemini API key
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e .
-```
+## Configure Environment
 
-Optional global install with isolated environment (no manual venv activation):
+Create your local env file:
 
 ```bash
-pipx install .
+cp .bot.local.env.example .env
 ```
 
-`.env` is auto-loaded by the CLI on startup (if present in repo root).
-You can still override values by exporting env vars in the shell.
-
-After install, use the real CLI command:
-
-```bash
-lch --help
-```
-
-Legacy compatibility is still available:
-
-```bash
-python main.py --help
-```
-
-## CLI Help
-
-```bash
-lch --help
-```
-
-Expected commands:
-- `run` (default when no subcommand is passed)
-- `migrate`
-- `test`
-- `bot`
-- `scheduler`
-- `scheduler-doctor`
-- `doctor`
-- `import-notion`
-
-## Run App Bootstrap
-
-```bash
-lch
-```
-
-Equivalent explicit command:
-
-```bash
-lch run
-```
-
-## Apply Database Migrations
-
-```bash
-lch migrate
-```
-
-This applies any pending SQL files from `migrations/` and records them in `schema_migrations`.
-
-## Run Telegram Bot (Long Polling)
-
-### 1) Create a bot token
-
-Use BotFather in Telegram:
-- open `@BotFather`
-- run `/newbot`
-- copy the generated token
-
-### 2) Export token locally
-
-Set bot token in `.env` (recommended):
+Set at least these values in `.env`:
 
 ```env
 LEETCOACH_TELEGRAM_BOT_TOKEN=<your-token>
@@ -88,266 +24,119 @@ LEETCOACH_ALLOWED_USER_IDS=<telegram_user_id_1>,<telegram_user_id_2>
 LEETCOACH_REMINDER_HOUR_LOCAL=8
 LEETCOACH_REMINDER_DAILY_MAX=2
 GEMINI_API_KEY=<your-gemini-api-key>
+LEETCOACH_DB_PATH=/data/leetcoach.db
 ```
-
-Or export in the shell (overrides `.env`):
-
-```bash
-export LEETCOACH_TELEGRAM_BOT_TOKEN="<your-token>"
-export LEETCOACH_ALLOWED_USER_IDS="123456789"
-export GEMINI_API_KEY="<your-gemini-api-key>"
-```
-
-Allow-list behavior:
-- if `LEETCOACH_ALLOWED_USER_IDS` is empty/unset, bot is open to any Telegram user
-- if set, only listed Telegram user IDs can use commands
-- blocked users get: `⛔ Access denied for this bot.`
-
-### 3) Start the bot process
-
-Start bot:
-
-```bash
-lch bot
-```
-
-Bot startup now retries transient bootstrap network failures up to 5 times before exiting.
-
-## Doctor Check
-
-Quick health check for config and Telegram API reachability:
-
-```bash
-lch doctor
-```
-
-This validates:
-- token presence (masked in output)
-- DB path/timezone/allow-list visibility
-- Telegram `getMe` API connectivity
-
-## Reminder Scheduler
-
-Validate scheduler readiness (token + db schema + scheduler config):
-
-```bash
-lch scheduler-doctor
-```
-
-This command is local-only and checks:
-- `LEETCOACH_TELEGRAM_BOT_TOKEN` presence
-- DB contains required tables (`schema_migrations`, `users`, `problems`, `user_problems`, `problem_reviews`)
-- scheduler config values are sane (`reminder_hour_local`, `reminder_daily_max`)
-
-Run one scheduler tick and exit:
-
-```bash
-lch scheduler --once
-```
-
-Run continuous scheduler loop (default 60 seconds):
-
-```bash
-lch scheduler --interval-seconds 60
-```
-
-Scheduler behavior:
-- runs a preflight check before each run/loop and exits early on failure
-- scans due review checkpoints (`due_at <= now`) and classifies pending vs overdue
-- sends only at configured local hour (`LEETCOACH_REMINDER_HOUR_LOCAL`, default `8`)
-- picks up to `LEETCOACH_REMINDER_DAILY_MAX` per day (default `2`) with balanced priority:
-  - up to one pending checkpoint
-  - up to one overdue backlog checkpoint
-  - fills remaining slots by oldest due date
-- sends a daily header message first for clear demarcation
-- sends reminder messages via Telegram Bot API
-- updates `last_reminded_at` on successful send
-- avoids duplicate reminders within the same local user day
-- emits per-run observability counters:
-  - `scanned`, `due_unsent`, `selected`, `header_sent`, `sent`, `skipped`, `outside_hour`, `failed`
-
-### 4) Start chat with your bot
-
-In Telegram:
-- open your bot and run `/start`
-
-This registers your Telegram user/chat in the local database.
-
-Telegram command details (input/behavior/examples) are defined in:
-- [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
-
-Current command set:
-- `/start`, `/register`, `/help`, guided `/log`, `/due`, `/done <token> <7th|21st>`, `/search <query>`, `/list`, `/pattern <pattern-substring>`, `/quiz [topic]`, `/reveal`
 
 Notes:
-- `/start` is register-or-welcome: first call registers, later calls welcome you back
-- `/log` solved-time input accepts: `now`, ISO 8601, or `YYYY-MM-DD HH:MM` (local time)
-- list/search/pattern responses are grouped by pattern and ordered by NeetCode roadmap progression
-- list/search/pattern/due responses are rendered as compact numbered cards
-- `/due` shows one token per problem with day-7/day-21 checkpoints under that problem
-- `/done` requires both token and checkpoint day (example: `/done A1 7th`)
-- `/quiz [topic]` asks one MCQ question (topic optional)
-- replying with normal text after `/quiz` is treated as your answer
-- `/reveal` shows the correct answer + explanations (works before or after answer)
-- timestamps are shown in configured local timezone
-- list/search/pattern/due include LeetCode + NeetCode URLs built from slugs
-- Telegram link previews are disabled globally to avoid noisy URL cards in chat
+- if `LEETCOACH_ALLOWED_USER_IDS` is empty, bot is open mode
+- set `GEMINI_API_KEY` to enable `/quiz` and `/reveal`
 
-## Inspect Database
+## Start leetcoach
 
-Open SQLite shell:
+Apply DB migrations first:
 
 ```bash
-sqlite3 .local/leetcoach.db
+docker compose run --rm bot migrate
 ```
 
-Quick checks:
-
-```bash
-sqlite3 .local/leetcoach.db ".tables"
-sqlite3 .local/leetcoach.db "SELECT version, applied_at FROM schema_migrations ORDER BY version;"
-```
-
-Detailed schema checks:
-
-```bash
-sqlite3 .local/leetcoach.db ".schema users"
-sqlite3 .local/leetcoach.db ".schema problems"
-sqlite3 .local/leetcoach.db ".schema user_problems"
-sqlite3 .local/leetcoach.db ".schema problem_reviews"
-sqlite3 .local/leetcoach.db "SELECT name, tbl_name FROM sqlite_master WHERE type='index' ORDER BY tbl_name, name;"
-```
-
-## Run Integration Tests
-
-```bash
-lch test
-```
-
-Run only unit tests:
-
-```bash
-lch test unit
-```
-
-Run only integration tests:
-
-```bash
-lch test integration
-```
-
-Run a specific test target:
-
-```bash
-lch test unit tests.unit.dao.test_problem_reviews_dao
-```
-
-Run live Gemini integration tests (manual, not for CI):
-
-```bash
-export LEETCOACH_RUN_LIVE_TESTS=1
-export GEMINI_API_KEY="<your_key>"
-lch test integration tests.integration.llm.test_gemini_provider_live
-```
-
-## Import From Notion
-
-Dry-run first (no DB writes):
-
-```bash
-lch import-notion \
-  --root-page-url "https://www.notion.so/NeetCode-150-2f25715dd0d080348fe1f65ac7c4cbae" \
-  --telegram-user-id "<your_telegram_user_id>"
-```
-
-Apply import:
-
-```bash
-lch import-notion \
-  --root-page-url "https://www.notion.so/NeetCode-150-2f25715dd0d080348fe1f65ac7c4cbae" \
-  --telegram-user-id "<your_telegram_user_id>" \
-  --apply
-```
-
-## Container Runtime
-
-Start bot + scheduler containers (builds image if missing):
+Start bot + scheduler:
 
 ```bash
 docker compose up -d bot scheduler
 ```
 
-Force rebuild before start (recommended after dependency/code changes):
+Check logs:
 
 ```bash
-docker compose up -d --build bot scheduler
+docker compose logs -f bot
+docker compose logs -f scheduler
 ```
 
-Run one-off CLI commands in container:
+## Telegram Commands
+
+After startup, open your bot and run:
+
+```text
+/start
+```
+
+Command contract lives in:
+- [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
+
+Current commands:
+- `/start`, `/register`, `/help`
+- `/log`, `/due`, `/done <token> <7th|21st>`
+- `/search <query>`, `/list`, `/pattern <pattern-substring>`
+- `/quiz [topic]`, `/reveal`
+
+## Operational Commands (via container)
+
+Run one-off commands:
 
 ```bash
-docker compose run --rm bot migrate
 docker compose run --rm bot doctor
-docker compose run --rm bot test unit
-docker compose run --rm bot import-notion --root-page-url "<url>" --telegram-user-id "<id>" --apply
+docker compose run --rm bot scheduler-doctor
 docker compose run --rm bot scheduler --once
+docker compose run --rm bot test
+docker compose run --rm bot test unit
+docker compose run --rm bot test integration
 ```
 
-Open an interactive shell in the app container:
+Notion import:
 
 ```bash
-docker compose exec bot sh
+docker compose run --rm bot import-notion \
+  --root-page-url "<notion_root_page_url>" \
+  --telegram-user-id "<telegram_user_id>" \
+  --apply
 ```
 
-Then run commands directly inside container:
+## Deploy App (Recipe)
+
+Use this sequence on any host (local machine, VM, home server):
+
+1. Clone repo and enter directory.
+2. Create env file:
+   - `cp .bot.local.env.example .env`
+   - fill required values
+3. Prepare persistent local directory:
+   - `mkdir -p .local`
+4. Build and migrate:
+   - `docker compose build`
+   - `docker compose run --rm bot migrate`
+5. Start services:
+   - `docker compose up -d bot scheduler`
+6. Verify health:
+   - `docker compose run --rm bot doctor`
+   - `docker compose run --rm bot scheduler-doctor`
+7. Verify runtime:
+   - `docker compose logs -f bot`
+   - `docker compose logs -f scheduler`
+
+## Data and Persistence
+
+- SQLite DB is persisted at `.local/leetcoach.db` via compose volume mount.
+- If containers restart, data remains.
+- Back up periodically:
 
 ```bash
-lch --help
-lch migrate
-lch doctor
+cp .local/leetcoach.db ".local/leetcoach.db.backup.$(date +%Y%m%d-%H%M%S)"
 ```
-
-Stop bot:
-
-```bash
-docker compose down
-```
-
-Compose/build behavior note:
-- `docker compose up -d bot` builds if image is not present
-- it may not rebuild when files changed and an image already exists
-- use `docker compose up -d --build bot` when you want guaranteed rebuild
-
-Notes:
-- requires a Notion token env var (default env key: `MCP_BEARER_TOKEN`)
-- parser expects the current numbered-list style in your NeetCode pattern pages
-- importer requires `neetcode_slug` for each parsed problem
-- command prints live progress lines prefixed with `[import]`
 
 ## Troubleshooting
 
-- `ModuleNotFoundError: click` or Telegram imports missing
-  - re-run: `python -m pip install -e .`
+- `telegram.error.Conflict`:
+  - another polling process is already using the bot token
+  - stop duplicate bot instances
 
-- migration command runs but DB not where expected
-  - check `LEETCOACH_DB_PATH`
-  - default is `.local/leetcoach.db`
+- `no such table ...`:
+  - migrations were not applied to mounted DB
+  - run `docker compose run --rm bot migrate`
 
-- `/done <token> <7th|21st>` says unknown/expired token
-  - run `/due` again to refresh short tokens
+- `Quiz provider is not configured`:
+  - missing `GEMINI_API_KEY` in `.env`
+  - restart bot after setting key
 
-- `telegram.error.Conflict: terminated by other getUpdates request`
-  - only one long-polling bot process can run per bot token
-  - stop other instances first, then restart this one
-  - example process cleanup:
-    - `pgrep -af "python.*main.py bot"`
-    - `pkill -f "python.*main.py bot"`
-
-- startup fails with `telegram.error.NetworkError: httpx.ReadError`
-  - run `lch doctor` and check `telegram_getMe`
-  - if doctor fails, verify network/VPN/proxy and retry
-
-- scheduler sends duplicate reminders
-  - verify `users.timezone` values are valid
-  - inspect `problem_reviews.last_reminded_at` in DB
-  - run `lch scheduler --once` to observe one-tick behavior
+- no reminders sent:
+  - check local-hour gate in `.env` (`LEETCOACH_REMINDER_HOUR_LOCAL`)
+  - run one tick manually: `docker compose run --rm bot scheduler --once`
