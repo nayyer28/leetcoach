@@ -16,8 +16,11 @@ from leetcoach.telegram_bot import (
     _parse_review_day,
     _normalize_solved_at,
     _render_due,
+    _render_quiz_question,
+    _render_quiz_reveal,
     _render_problem_rows,
 )
+from leetcoach.services.quiz_service import QuizQuestionPayload, is_known_quiz_topic
 
 
 class TelegramBotFormattingUnitTest(unittest.TestCase):
@@ -243,6 +246,38 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertEqual(_parse_review_day("21"), 21)
         self.assertEqual(_parse_review_day("21st"), 21)
         self.assertIsNone(_parse_review_day("14"))
+
+    def test_quiz_topic_recognition(self) -> None:
+        self.assertTrue(is_known_quiz_topic("dp"))
+        self.assertTrue(is_known_quiz_topic("Binary Search"))
+        self.assertFalse(is_known_quiz_topic("made-up-topic-xyz"))
+
+    def test_render_quiz_question_and_reveal(self) -> None:
+        question = QuizQuestionPayload(
+            topic="arrays",
+            question="Which structure gives O(1) average lookup?",
+            options={
+                "A": "Hash map",
+                "B": "Binary search tree",
+                "C": "Linked list",
+                "D": "Queue",
+            },
+            correct_option="A",
+            why_correct="Hash map gives average O(1).",
+            why_others_wrong={
+                "B": "BST is O(log n) average.",
+                "C": "Linked list search is O(n).",
+                "D": "Queue is not for key lookup.",
+            },
+            concept_takeaway="Choose hash map for fast key-value lookup.",
+        )
+        question_text = _render_quiz_question(question, "gemini-2.5-flash-lite")
+        reveal_text = _render_quiz_reveal(question)
+        self.assertIn("Quiz Time", question_text)
+        self.assertIn("A) Hash map", question_text)
+        self.assertIn("Model: gemini-2.5-flash-lite", question_text)
+        self.assertIn("Correct option: A", reveal_text)
+        self.assertIn("Takeaway", reveal_text)
 
 
 if __name__ == "__main__":

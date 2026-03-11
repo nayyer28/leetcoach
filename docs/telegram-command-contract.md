@@ -14,6 +14,8 @@ Outbound reminders are delivered by the scheduler process (`lch scheduler`), not
 - `/search <query>`
 - `/list`
 - `/pattern <pattern>`
+- `/quiz [topic]`
+- `/reveal`
 
 ## Access Control
 
@@ -216,3 +218,59 @@ Success response:
 
 No data response:
 - `No problems for this pattern.`
+
+## `/quiz [topic]`
+
+Purpose:
+- generate one MCQ interview-style theory question
+
+Input:
+- optional topic text (for example `dp`, `graphs`, `system design`)
+
+Behavior:
+- requires configured `GEMINI_API_KEY`
+- if topic is not recognized, bot asks:
+  - `Not sure I know this topic yet. Do you want a general question instead? (yes/no)`
+  - `yes` starts a general quiz
+  - `no` cancels and asks for another topic
+- on success, creates/replaces active quiz session for the user
+- response shows question text and options `A-D`
+
+Error responses:
+- provider not configured -> ask to set `GEMINI_API_KEY`
+- generation failure -> retry hint
+
+## Free-Text Answer Message (after `/quiz`)
+
+Purpose:
+- check answer using normal chat message without extra command
+
+Input:
+- any non-command message while active quiz exists
+
+Behavior:
+- message is treated as answer input
+- supports either letter (`A`) or short free-text answer
+- bot returns:
+  - correctness
+  - selected vs correct option
+  - short explanation
+  - short why-other-options-are-wrong summary
+
+If no active quiz exists:
+- bot returns standard help hint (does not treat as answer)
+
+## `/reveal`
+
+Purpose:
+- reveal correct option and full explanation for active quiz
+
+Input:
+- no arguments
+
+Behavior:
+- works before or after answer submission
+- marks session revealed and sets short retention TTL window
+
+If no active quiz exists:
+- `⚠️ No active quiz. Run /quiz first.`
