@@ -130,6 +130,8 @@ Retention policy:
 - keep terminal sessions (`revealed` or `closed`) for a short TTL window
 - default TTL: `24h` from terminal transition
 - `expires_at` is the deletion deadline used by cleanup
+- rationale: beyond 24h, historical lookup is delegated to Telegram chat history,
+  so LeetCoach does not need to retain long-lived quiz records in its own DB
 
 Cleanup behavior:
 - delete rows where `status IN ('revealed','closed') AND expires_at < now`
