@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import re
 from datetime import UTC, datetime
 from html import escape
@@ -24,6 +25,11 @@ from telegram.ext import (
 from leetcoach.config import AppConfig
 from leetcoach.dao.users_dao import get_user_id_by_telegram_user_id, upsert_user
 from leetcoach.db.connection import get_connection
+from leetcoach.llm.gemini_provider import (
+    DEFAULT_GEMINI_MODEL_PRIORITY,
+    GeminiAllModelsFailed,
+    GeminiProvider,
+)
 from leetcoach.services.due_tokens import DueTokenStore, ProblemToken
 from leetcoach.services.log_problem_service import LogProblemInput, log_problem
 from leetcoach.services.query_service import (
@@ -33,6 +39,14 @@ from leetcoach.services.query_service import (
     list_by_pattern,
     list_due_reviews,
     search_problems,
+)
+from leetcoach.services.quiz_service import (
+    AnswerQuizResult,
+    QuizQuestionPayload,
+    answer_quiz,
+    is_known_quiz_topic,
+    reveal_quiz,
+    start_quiz,
 )
 
 
@@ -192,9 +206,13 @@ def _normalize_solved_at(raw_value: str, timezone_name: str) -> str | None:
 
 def _commands_help_text() -> str:
     return (
-        "🤖 <b>LeetCoach Command Menu</b>\n\n"
+        "🤖 <b>leetcoach Command Menu</b>\n\n"
         "📝 <b>Log</b>\n"
         "• /log\n\n"
+        "🧠 <b>Quiz</b>\n"
+        "• /quiz\n"
+        "• /quiz &lt;topic&gt;\n"
+        "• /reveal\n\n"
         "⏰ <b>Review</b>\n"
         "• /due\n"
         "• /done A1 7th\n\n"
@@ -273,7 +291,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if cfg is None:
         return
     await update.message.reply_text(
-        "👋 Hey, I’m LeetCoach — Saahil Nayyer’s interview prep bot.\n"
+        "👋 Hey, I’m leetcoach — Saahil Nayyer’s interview prep bot.\n"
         "I’m currently for personal use only.\n"
         "If you’d like access, please contact @nayyer28."
     )
@@ -566,6 +584,129 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(f"✅ Marked complete: {token} day {review_day}")
 
 
+def _render_quiz_question(question: QuizQuestionPayload, model_used: str | None) -> str:
+    lines = [
+        "🧠 Quiz Time",
+        f"Topic: {question.topic}",
+        "",
+        question.question,
+        "",
+    ]
+    for key in ("A", "B", "C", "D"):
+        lines.append(f"{key}) {question.options.get(key, '')}")
+    lines.extend(
+        [
+            "",
+            "Reply with your answer (free text).",
+            "Use /reveal anytime to show the explanation.",
+        ]
+    )
+    if model_used:
+        lines.append(f"Model: {model_used}")
+    return "\n".join(lines)
+
+
+def _render_quiz_feedback(result: AnswerQuizResult) -> str:
+    if result.feedback is None:
+        return "⚠️ Could not evaluate answer."
+    verdict = "✅ Correct" if result.feedback.is_correct else "❌ Not quite"
+    lines = [
+        verdict,
+        f"Summary: {result.feedback.verdict_summary}",
+        "",
+        result.feedback.formal_feedback,
+        "",
+        f"Takeaway: {result.feedback.concept_takeaway}",
+    ]
+    if result.model_used:
+        lines.append(f"Model: {result.model_used}")
+    return "\n".join(lines)
+
+
+def _render_quiz_reveal(question: QuizQuestionPayload) -> str:
+    lines = [
+        "📖 Reveal",
+        f"Correct option: {question.correct_option}",
+        f"Why: {question.why_correct}",
+        "",
+        "Other options:",
+    ]
+    for key in ("A", "B", "C", "D"):
+        if key == question.correct_option:
+            continue
+        explanation = question.why_others_wrong.get(key)
+        if explanation:
+            lines.append(f"- {key}: {explanation}")
+    lines.extend(["", f"Takeaway: {question.concept_takeaway}"])
+    return "\n".join(lines)
+
+
+async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
+    provider: GeminiProvider | None = context.application.bot_data.get("quiz_provider")
+    if provider is None:
+        await update.message.reply_text(
+            "⚠️ Quiz provider is not configured. Set GEMINI_API_KEY and restart bot."
+        )
+        return
+
+    topic = " ".join(context.args).strip() if context.args else None
+    if topic and not is_known_quiz_topic(topic):
+        context.user_data["quiz_unknown_topic"] = topic
+        await update.message.reply_text(
+            "Not sure I know this topic. Do you want a general question instead? (yes/no)"
+        )
+        return
+
+    try:
+        result = start_quiz(
+            db_path=cfg.db_path,
+            telegram_user_id=_telegram_user_id(update),
+            topic=topic,
+            provider=provider,
+        )
+    except (GeminiAllModelsFailed, ValueError, json.JSONDecodeError) as exc:
+        LOGGER.exception("Quiz generation failed")
+        await update.message.reply_text(
+            f"⚠️ Could not generate quiz right now: {exc}\nTry again shortly."
+        )
+        return
+
+    if result.status == "user_not_registered":
+        await update.message.reply_text("⚠️ Please run /start first.")
+        return
+    if result.status == "unknown_topic":
+        context.user_data["quiz_unknown_topic"] = topic
+        await update.message.reply_text(
+            "Not sure I know this topic. Do you want a general question instead? (yes/no)"
+        )
+        return
+    if result.question is None:
+        await update.message.reply_text("⚠️ Could not generate quiz. Try again.")
+        return
+    context.user_data.pop("quiz_unknown_topic", None)
+    await update.message.reply_text(_render_quiz_question(result.question, result.model_used))
+
+
+async def reveal_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
+    result = reveal_quiz(
+        db_path=cfg.db_path,
+        telegram_user_id=_telegram_user_id(update),
+    )
+    if result.status == "user_not_registered":
+        await update.message.reply_text("⚠️ Please run /start first.")
+        return
+    if result.status == "no_active_quiz" or result.question is None:
+        await update.message.reply_text("⚠️ No active quiz. Run /quiz first.")
+        return
+    await update.message.reply_text(_render_quiz_reveal(result.question))
+
+
 def _render_problem_rows(rows: list[dict[str, str]], timezone_name: str) -> str:
     lines: list[str] = ["📚 Your Problems", ""]
     grouped: dict[tuple[str, int, str], list[dict[str, str]]] = {}
@@ -690,9 +831,68 @@ async def default_text_command(update: Update, context: ContextTypes.DEFAULT_TYP
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return
-    await update.message.reply_text(
-        "👋 I’m here. Try /help to see available commands."
-    )
+    text = (update.message.text or "").strip()
+
+    unknown_topic = context.user_data.get("quiz_unknown_topic")
+    if unknown_topic is not None:
+        lowered = text.lower()
+        if lowered in {"yes", "y"}:
+            provider: GeminiProvider | None = context.application.bot_data.get(
+                "quiz_provider"
+            )
+            if provider is None:
+                await update.message.reply_text(
+                    "⚠️ Quiz provider is not configured. Set GEMINI_API_KEY and restart bot."
+                )
+                return
+            try:
+                result = start_quiz(
+                    db_path=cfg.db_path,
+                    telegram_user_id=_telegram_user_id(update),
+                    topic=None,
+                    provider=provider,
+                )
+            except (GeminiAllModelsFailed, ValueError, json.JSONDecodeError) as exc:
+                LOGGER.exception("General fallback quiz generation failed")
+                await update.message.reply_text(
+                    f"⚠️ Could not generate general question right now: {exc}"
+                )
+                return
+            context.user_data.pop("quiz_unknown_topic", None)
+            if result.status == "ok" and result.question is not None:
+                await update.message.reply_text(
+                    _render_quiz_question(result.question, result.model_used)
+                )
+                return
+            await update.message.reply_text("⚠️ Could not generate quiz. Try /quiz again.")
+            return
+        if lowered in {"no", "n"}:
+            context.user_data.pop("quiz_unknown_topic", None)
+            await update.message.reply_text("Okay. Send /quiz with another topic.")
+            return
+        await update.message.reply_text("Please reply with yes or no.")
+        return
+
+    provider: GeminiProvider | None = context.application.bot_data.get("quiz_provider")
+    if provider is not None:
+        try:
+            answer_result = answer_quiz(
+                db_path=cfg.db_path,
+                telegram_user_id=_telegram_user_id(update),
+                user_answer_text=text,
+                provider=provider,
+            )
+        except (GeminiAllModelsFailed, ValueError, json.JSONDecodeError) as exc:
+            LOGGER.exception("Quiz answer evaluation failed")
+            await update.message.reply_text(
+                f"⚠️ Could not evaluate answer right now: {exc}\nTry again shortly."
+            )
+            return
+        if answer_result.status == "ok":
+            await update.message.reply_text(_render_quiz_feedback(answer_result))
+            return
+
+    await update.message.reply_text("👋 I’m here. Try /help to see available commands.")
 
 
 async def app_error_handler(_: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -720,6 +920,14 @@ def build_application(config: AppConfig) -> Application:
     )
     app.bot_data["config"] = config
     app.bot_data["due_tokens"] = DueTokenStore()
+    if config.gemini_api_key:
+        app.bot_data["quiz_provider"] = GeminiProvider(
+            api_key=config.gemini_api_key,
+            model_priority=DEFAULT_GEMINI_MODEL_PRIORITY,
+            max_transient_retries=1,
+        )
+    else:
+        app.bot_data["quiz_provider"] = None
 
     log_flow = ConversationHandler(
         entry_points=[CommandHandler("log", log_command)],
@@ -755,6 +963,8 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("pattern", pattern_command))
     app.add_handler(CommandHandler("list", list_command))
+    app.add_handler(CommandHandler("quiz", quiz_command))
+    app.add_handler(CommandHandler("reveal", reveal_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, default_text_command))
     app.add_error_handler(app_error_handler)
     return app

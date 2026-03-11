@@ -12,6 +12,7 @@ class AppConfig:
     db_path: str
     telegram_bot_token: str | None
     allowed_user_ids: frozenset[str]
+    gemini_api_key: str | None = None
     reminder_hour_local: int = 8
     reminder_daily_max: int = 2
 
@@ -39,6 +40,7 @@ def load_config() -> AppConfig:
         timezone=os.getenv("LEETCOACH_TIMEZONE", "UTC"),
         db_path=os.getenv("LEETCOACH_DB_PATH", ".local/leetcoach.db"),
         telegram_bot_token=os.getenv("LEETCOACH_TELEGRAM_BOT_TOKEN"),
+        gemini_api_key=os.getenv("GEMINI_API_KEY"),
         allowed_user_ids=_parse_allowed_user_ids(),
         reminder_hour_local=max(0, min(23, _parse_int_env("LEETCOACH_REMINDER_HOUR_LOCAL", 8))),
         reminder_daily_max=max(1, _parse_int_env("LEETCOACH_REMINDER_DAILY_MAX", 2)),

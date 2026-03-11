@@ -21,7 +21,7 @@ Completed:
 - software design document
 - CLI command via entrypoint: `lch` (`run`, `migrate`, `test`, `bot`, `doctor`, `import-notion`)
 - schema migrations and DB layer
-- Telegram D1 commands: `/start`, `/register`, `/help`, guided `/log`, `/due`, `/done <token> <7th|21st>`, `/search`, `/list`, `/pattern`
+- Telegram commands: `/start`, `/register`, `/help`, guided `/log`, `/due`, `/done <token> <7th|21st>`, `/search`, `/list`, `/pattern`, `/quiz [topic]`, `/reveal`
 - container runtime baseline (`Dockerfile`, `docker-compose.yml`)
 - Notion import command and parsing pipeline
 - CI workflow for advisory unit/integration test runs on PRs
@@ -29,7 +29,7 @@ Completed:
 - scheduler preflight/doctor command and observability counters (`lch scheduler-doctor`)
 
 Next:
-- v2 LLM quiz implementation from spec (`docs/v2-spec.md`)
+- v2 follow-ups from spec (`docs/v2-spec.md`): quiz quality tuning, spaced scheduling, and progress tracking
 
 v1 acceptance checklist:
 - maintained in [`docs/v1-spec.md`](docs/v1-spec.md) under `V1 Acceptance Checklist`

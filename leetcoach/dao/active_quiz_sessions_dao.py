@@ -110,7 +110,12 @@ def mark_quiz_answered(
 
 
 def mark_quiz_revealed(
-    conn: sqlite3.Connection, *, user_id: int, revealed_at: str, now_iso: str
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    revealed_at: str,
+    expires_at: str,
+    now_iso: str,
 ) -> bool:
     cur = conn.execute(
         """
@@ -121,11 +126,12 @@ def mark_quiz_revealed(
                 WHEN revealed_at IS NULL THEN ?
                 ELSE revealed_at
             END,
+            expires_at = ?,
             updated_at = ?
         WHERE user_id = ?
           AND status IN ('asked', 'answered', 'revealed')
         """,
-        (revealed_at, now_iso, user_id),
+        (revealed_at, expires_at, now_iso, user_id),
     )
     return cur.rowcount > 0
 

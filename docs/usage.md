@@ -87,6 +87,7 @@ LEETCOACH_TELEGRAM_BOT_TOKEN=<your-token>
 LEETCOACH_ALLOWED_USER_IDS=<telegram_user_id_1>,<telegram_user_id_2>
 LEETCOACH_REMINDER_HOUR_LOCAL=8
 LEETCOACH_REMINDER_DAILY_MAX=2
+GEMINI_API_KEY=<your-gemini-api-key>
 ```
 
 Or export in the shell (overrides `.env`):
@@ -94,6 +95,7 @@ Or export in the shell (overrides `.env`):
 ```bash
 export LEETCOACH_TELEGRAM_BOT_TOKEN="<your-token>"
 export LEETCOACH_ALLOWED_USER_IDS="123456789"
+export GEMINI_API_KEY="<your-gemini-api-key>"
 ```
 
 Allow-list behavior:
@@ -175,7 +177,7 @@ Telegram command details (input/behavior/examples) are defined in:
 - [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
 
 Current command set:
-- `/start`, `/register`, `/help`, guided `/log`, `/due`, `/done <token> <7th|21st>`, `/search <query>`, `/list`, `/pattern <pattern-substring>`
+- `/start`, `/register`, `/help`, guided `/log`, `/due`, `/done <token> <7th|21st>`, `/search <query>`, `/list`, `/pattern <pattern-substring>`, `/quiz [topic]`, `/reveal`
 
 Notes:
 - `/start` is register-or-welcome: first call registers, later calls welcome you back
@@ -184,6 +186,9 @@ Notes:
 - list/search/pattern/due responses are rendered as compact numbered cards
 - `/due` shows one token per problem with day-7/day-21 checkpoints under that problem
 - `/done` requires both token and checkpoint day (example: `/done A1 7th`)
+- `/quiz [topic]` asks one MCQ question (topic optional)
+- replying with normal text after `/quiz` is treated as your answer
+- `/reveal` shows the correct answer + explanations (works before or after answer)
 - timestamps are shown in configured local timezone
 - list/search/pattern/due include LeetCode + NeetCode URLs built from slugs
 - Telegram link previews are disabled globally to avoid noisy URL cards in chat
