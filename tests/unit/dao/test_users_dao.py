@@ -1,0 +1,51 @@
+from __future__ import annotations
+
+from pathlib import Path
+import tempfile
+import unittest
+
+from leetcoach.dao.users_dao import get_user_id_by_telegram_user_id, upsert_user
+from leetcoach.db.connection import get_connection
+from leetcoach.db.migrate import migrate_database
+
+
+class UsersDaoUnitTest(unittest.TestCase):
+    def test_upsert_user_updates_existing_row_and_preserves_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "leetcoach-test.db"
+            migrate_database(str(db_path))
+
+            with get_connection(str(db_path)) as conn:
+                first_id = upsert_user(
+                    conn,
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="UTC",
+                    now_iso="2026-03-16T10:00:00+00:00",
+                )
+                second_id = upsert_user(
+                    conn,
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-2",
+                    timezone="Europe/Berlin",
+                    now_iso="2026-03-16T11:00:00+00:00",
+                )
+                conn.commit()
+
+                self.assertEqual(first_id, second_id)
+                self.assertEqual(
+                    get_user_id_by_telegram_user_id(
+                        conn, telegram_user_id="u-1"
+                    ),
+                    first_id,
+                )
+                row = conn.execute(
+                    "SELECT telegram_chat_id, timezone FROM users WHERE id = ?",
+                    (first_id,),
+                ).fetchone()
+                self.assertEqual(row["telegram_chat_id"], "chat-2")
+                self.assertEqual(row["timezone"], "Europe/Berlin")
+
+
+if __name__ == "__main__":
+    unittest.main()
