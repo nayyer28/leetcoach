@@ -15,7 +15,7 @@ LeetCode prep assistant focused on logging solved problems, scheduling review re
 ## Project Status
 
 Current phase:
-- v3 planning (observability + deployment hardening)
+- post-v2 stabilization and v3 planning
 
 Completed:
 - data and behavior specification
@@ -28,6 +28,7 @@ Completed:
 - CI workflow for advisory unit/integration test runs on PRs
 - reminder scheduler loop + outbound Telegram reminders (`lch scheduler`)
 - scheduler preflight/doctor command and observability counters (`lch scheduler-doctor`)
+- v2 quiz flow with Gemini fallback (`/quiz [topic]`, free-text answer checking, `/reveal`)
 
 Next:
 - v2 follow-ups from spec (`docs/v2-spec.md`): quiz quality tuning and progress tracking

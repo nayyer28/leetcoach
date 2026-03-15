@@ -1,6 +1,7 @@
 # Usage Guide (Docker-First)
 
 This is the primary runbook for running leetcoach.
+Docker is the main operational path, but the CLI commands described here are the same commands the containers run internally.
 
 ## Prerequisites
 
@@ -52,6 +53,10 @@ docker compose logs -f bot
 docker compose logs -f scheduler
 ```
 
+What these services do:
+- `bot` runs long-polling Telegram handlers
+- `scheduler` runs outbound reminder selection/sending every 60 seconds and only dispatches during the configured local reminder hour
+
 ## Telegram Commands
 
 After startup, open your bot and run:
@@ -81,6 +86,57 @@ docker compose run --rm bot test
 docker compose run --rm bot test unit
 docker compose run --rm bot test integration
 ```
+
+Open a shell in the app container:
+
+```bash
+docker compose exec bot sh
+```
+
+Then run the same CLI directly inside the container:
+
+```bash
+lch --help
+lch doctor
+lch scheduler-doctor
+lch migrate
+```
+
+## Doctor Commands
+
+General environment + Telegram API check:
+
+```bash
+docker compose run --rm bot doctor
+```
+
+This checks:
+- current DB path
+- configured timezone
+- count of allowed Telegram user IDs
+- presence of Telegram bot token
+- live `getMe` reachability against Telegram API
+
+Scheduler preflight check:
+
+```bash
+docker compose run --rm bot scheduler-doctor
+```
+
+This checks:
+- current DB path
+- `LEETCOACH_REMINDER_HOUR_LOCAL`
+- `LEETCOACH_REMINDER_DAILY_MAX`
+- presence of Telegram bot token
+- required DB tables for scheduler execution
+
+Run one scheduler tick manually:
+
+```bash
+docker compose run --rm bot scheduler --once
+```
+
+This is useful when you want to inspect scheduler behavior without waiting for the loop.
 
 Notion import:
 
@@ -115,12 +171,45 @@ Use this sequence on any host (local machine, VM, home server):
 
 ## Data and Persistence
 
-- SQLite DB is persisted at `.local/leetcoach.db` via compose volume mount.
-- If containers restart, data remains.
-- Back up periodically:
+- Compose uses a named Docker volume: `leetcoach_data`.
+- Inside the containers, the SQLite file path is `/data/leetcoach.db`.
+- If containers restart, data remains because the named volume persists independently of the containers.
+
+Export the active Docker-managed DB to a normal file:
 
 ```bash
-cp .local/leetcoach.db ".local/leetcoach.db.backup.$(date +%Y%m%d-%H%M%S)"
+docker run --rm \
+  -v leetcoach_leetcoach_data:/from \
+  -v "$PWD:/to" \
+  alpine sh -c 'cp /from/leetcoach.db /to/leetcoach.volume.db'
+```
+
+Back up a file-based copy:
+
+```bash
+cp leetcoach.volume.db "leetcoach.volume.db.backup.$(date +%Y%m%d-%H%M%S)"
+```
+
+## Inspect SQLite Directly
+
+Inspect an exported DB file:
+
+```bash
+sqlite3 leetcoach.volume.db ".tables"
+sqlite3 leetcoach.volume.db "SELECT version FROM schema_migrations ORDER BY version;"
+sqlite3 leetcoach.volume.db ".schema active_quiz_sessions"
+sqlite3 leetcoach.volume.db "SELECT count(*) FROM users;"
+sqlite3 leetcoach.volume.db "SELECT count(*) FROM user_problems;"
+sqlite3 leetcoach.volume.db "SELECT count(*) FROM problem_reviews;"
+sqlite3 leetcoach.volume.db "SELECT count(*) FROM active_quiz_sessions;"
+```
+
+Inspect the live DB by opening a shell in the container first:
+
+```bash
+docker compose exec bot sh
+sqlite3 /data/leetcoach.db ".tables"
+sqlite3 /data/leetcoach.db "SELECT version FROM schema_migrations ORDER BY version;"
 ```
 
 ## Troubleshooting
@@ -133,6 +222,11 @@ cp .local/leetcoach.db ".local/leetcoach.db.backup.$(date +%Y%m%d-%H%M%S)"
   - migrations were not applied to mounted DB
   - run `docker compose run --rm bot migrate`
 
+- DB file looks stale or missing expected quiz data:
+  - confirm you are inspecting the Docker volume DB, not an older host-side copy
+  - export the current volume DB and inspect `schema_migrations`
+  - `active_quiz_sessions` exists only after migration `0003_active_quiz_sessions.sql`
+
 - `Quiz provider is not configured`:
   - missing `GEMINI_API_KEY` in `.env`
   - restart bot after setting key
@@ -140,3 +234,7 @@ cp .local/leetcoach.db ".local/leetcoach.db.backup.$(date +%Y%m%d-%H%M%S)"
 - no reminders sent:
   - check local-hour gate in `.env` (`LEETCOACH_REMINDER_HOUR_LOCAL`)
   - run one tick manually: `docker compose run --rm bot scheduler --once`
+
+- want to confirm the exact DB path the app is using:
+  - run `docker compose run --rm bot doctor`
+  - current Compose wiring should report `/data/leetcoach.db`
