@@ -87,6 +87,20 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
             "valid-binary-search-tree",
         )
         self.assertEqual(
+            _extract_problem_slug(
+                "https://leetcode.com/problems/validate-binary-search-tree/editorial",
+                provider="leetcode",
+            ),
+            "validate-binary-search-tree",
+        )
+        self.assertEqual(
+            _extract_problem_slug(
+                "https://neetcode.io/problems/valid-binary-search-tree/anything",
+                provider="neetcode",
+            ),
+            "valid-binary-search-tree",
+        )
+        self.assertEqual(
             _extract_problem_slug("validate-binary-search-tree", provider="leetcode"),
             "validate-binary-search-tree",
         )

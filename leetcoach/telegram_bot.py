@@ -57,11 +57,11 @@ BOT_BOOTSTRAP_RETRIES = 5
 UNKNOWN_PATTERN_LEVEL = 999
 SLUG_INPUT_RE = re.compile(r"^[a-z0-9-]+$", re.IGNORECASE)
 LEETCODE_INPUT_RE = re.compile(
-    r"^https?://leetcode\.com/problems/([^/?#]+)/?(?:description/)?(?:[?#].*)?$",
+    r"^https?://leetcode\.com/problems/([^/?#]+)(?:/.*)?$",
     re.IGNORECASE,
 )
 NEETCODE_INPUT_RE = re.compile(
-    r"^https?://neetcode\.io/problems/([^/?#]+)/?(?:question)?/?(?:[?#].*)?$",
+    r"^https?://neetcode\.io/problems/([^/?#]+)(?:/.*)?$",
     re.IGNORECASE,
 )
 
