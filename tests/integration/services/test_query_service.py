@@ -9,6 +9,7 @@ from leetcoach.db.migrate import migrate_database
 from leetcoach.services.log_problem_service import LogProblemInput, log_problem
 from leetcoach.services.query_service import (
     complete_review,
+    get_problem_detail,
     list_all_problems,
     list_by_pattern,
     list_due_reviews,
@@ -66,6 +67,13 @@ class QueryServiceIntegrationTest(unittest.TestCase):
             self.assertEqual(len(all_rows), 2)
             self.assertEqual(all_rows[0]["title"], "Sliding Window Maximum")
             self.assertEqual(all_rows[1]["title"], "Maximum Depth of Binary Tree")
+            detail = get_problem_detail(
+                str(db_path), "u-1", int(all_rows[0]["user_problem_id"])
+            )
+            self.assertIsNotNone(detail)
+            self.assertEqual(detail["title"], "Sliding Window Maximum")
+            self.assertEqual(detail["concepts"], "deque monotonic queue")
+            self.assertEqual(detail["notes"], "deque notes")
 
             due = list_due_reviews(str(db_path), "u-1")
             self.assertEqual(len(due), 2)

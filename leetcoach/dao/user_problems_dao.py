@@ -137,3 +137,32 @@ def list_user_problems(
         """,
         (user_id, limit),
     ).fetchall()
+
+
+def get_user_problem_detail(
+    conn: sqlite3.Connection, *, user_id: int, user_problem_id: int
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT
+            up.id AS user_problem_id,
+            p.title,
+            p.difficulty,
+            p.leetcode_slug,
+            p.neetcode_slug,
+            up.pattern,
+            up.solved_at,
+            up.concepts,
+            up.time_complexity,
+            up.space_complexity,
+            up.notes,
+            up.created_at,
+            up.updated_at
+        FROM user_problems up
+        JOIN problems p ON p.id = up.problem_id
+        WHERE up.user_id = ?
+          AND up.id = ?
+        LIMIT 1
+        """,
+        (user_id, user_problem_id),
+    ).fetchone()
