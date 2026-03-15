@@ -35,11 +35,7 @@ jobs:
 
   deploy:
     needs: test
-    runs-on:
-      - self-hosted
-      - linux
-      - x64
-      - leetcoach-fedora
+    runs-on: self-hosted
     timeout-minutes: 20
 
     steps:
