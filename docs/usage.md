@@ -138,6 +138,14 @@ docker compose run --rm bot scheduler --once
 
 This is useful when you want to inspect scheduler behavior without waiting for the loop.
 
+## Logging UX Notes
+
+- `/log` now offers button choices for difficulty and known roadmap patterns
+- typed difficulty is accepted only for exact values: `easy`, `medium`, `hard` (case-insensitive)
+- typed pattern is accepted only if it resolves to a known roadmap pattern
+- common aliases like `tree` normalize to `Trees`
+- LeetCode and NeetCode inputs accept either the full problem URL or the raw slug
+
 Notion import:
 
 ```bash

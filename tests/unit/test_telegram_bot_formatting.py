@@ -7,12 +7,15 @@ from leetcoach.services.due_tokens import ProblemToken
 from leetcoach.services.query_service import DueReviewItem
 from leetcoach.telegram_bot import (
     DueProblemEntry,
+    _canonical_pattern_label,
     _chunk_text,
+    _extract_problem_slug,
     _format_timestamp,
     _group_due_entries,
     _is_user_allowed,
     _leetcode_url,
     _neetcode_url,
+    _normalize_difficulty_input,
     _parse_review_day,
     _normalize_solved_at,
     _render_problem_detail,
@@ -54,6 +57,44 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
             "https://neetcode.io/problems/valid-binary-search-tree/question",
         )
         self.assertIsNone(_neetcode_url(None))
+
+    def test_normalize_difficulty_input(self) -> None:
+        self.assertEqual(_normalize_difficulty_input("Easy"), "easy")
+        self.assertEqual(_normalize_difficulty_input("MEDIUM"), "medium")
+        self.assertEqual(_normalize_difficulty_input("hard"), "hard")
+        self.assertIsNone(_normalize_difficulty_input("med"))
+
+    def test_canonical_pattern_label(self) -> None:
+        self.assertEqual(_canonical_pattern_label("Trees"), "Trees")
+        self.assertEqual(_canonical_pattern_label("tree"), "Trees")
+        self.assertEqual(_canonical_pattern_label("tree dfs"), "Trees")
+        self.assertEqual(_canonical_pattern_label("Heap"), "Heap / Priority Queue")
+        self.assertIsNone(_canonical_pattern_label("totally unknown"))
+
+    def test_extract_problem_slug_from_url_or_slug(self) -> None:
+        self.assertEqual(
+            _extract_problem_slug(
+                "https://leetcode.com/problems/validate-binary-search-tree/description/",
+                provider="leetcode",
+            ),
+            "validate-binary-search-tree",
+        )
+        self.assertEqual(
+            _extract_problem_slug(
+                "https://neetcode.io/problems/valid-binary-search-tree/question",
+                provider="neetcode",
+            ),
+            "valid-binary-search-tree",
+        )
+        self.assertEqual(
+            _extract_problem_slug("validate-binary-search-tree", provider="leetcode"),
+            "validate-binary-search-tree",
+        )
+        self.assertEqual(
+            _extract_problem_slug("valid-binary-search-tree", provider="neetcode"),
+            "valid-binary-search-tree",
+        )
+        self.assertIsNone(_extract_problem_slug("not a slug", provider="leetcode"))
 
     def test_user_allowlist_behavior(self) -> None:
         open_cfg = AppConfig(

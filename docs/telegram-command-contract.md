@@ -76,10 +76,10 @@ Input mode:
 
 Prompt sequence:
 1. title
-2. difficulty (`easy|medium|hard`)
-3. leetcode slug
-4. neetcode slug (`-` to skip)
-5. pattern
+2. difficulty (`easy|medium|hard`) via button choices or exact typed value
+3. LeetCode URL or slug (`-` to skip)
+4. NeetCode URL or slug (required)
+5. pattern via button choices or exact typed value
 6. solved timestamp (`now` or ISO 8601)
 7. concepts (`-` to skip)
 8. time complexity (`-` to skip)
@@ -90,6 +90,9 @@ Behavior:
 - upserts canonical problem
 - upserts user problem record
 - ensures day-7 and day-21 review rows
+- difficulty is case-insensitive but must be an exact known value
+- pattern is normalized to the canonical roadmap label and unknown values are rejected
+- LeetCode / NeetCode full URLs are accepted and normalized to stored slugs
 
 Success response:
 - confirms problem logged and shows `user_problem_id`

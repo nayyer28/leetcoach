@@ -9,7 +9,7 @@ import logging
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from telegram import LinkPreviewOptions, Update
+from telegram import LinkPreviewOptions, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
 from telegram.constants import ParseMode
 from telegram.error import Conflict, NetworkError
 from telegram.ext import (
@@ -55,6 +55,15 @@ LOGGER = logging.getLogger("leetcoach.telegram")
 TELEGRAM_MESSAGE_CHUNK_SIZE = 3500
 BOT_BOOTSTRAP_RETRIES = 5
 UNKNOWN_PATTERN_LEVEL = 999
+SLUG_INPUT_RE = re.compile(r"^[a-z0-9-]+$", re.IGNORECASE)
+LEETCODE_INPUT_RE = re.compile(
+    r"^https?://leetcode\.com/problems/([^/?#]+)/?(?:description/)?(?:[?#].*)?$",
+    re.IGNORECASE,
+)
+NEETCODE_INPUT_RE = re.compile(
+    r"^https?://neetcode\.io/problems/([^/?#]+)/?(?:question)?/?(?:[?#].*)?$",
+    re.IGNORECASE,
+)
 
 # NeetCode roadmap-inspired ordering; same-level groups are alphabetical.
 ROADMAP_PATTERN_LEVELS: dict[str, tuple[int, str]] = {
@@ -100,6 +109,8 @@ ROADMAP_PATTERN_ALIASES: dict[str, str] = {
     "math and geometry": "math geometry",
     "bitwise": "bit manipulation",
 }
+
+DIFFICULTY_OPTIONS = [["Easy", "Medium", "Hard"]]
 
 
 @dataclass(frozen=True)
@@ -234,6 +245,62 @@ def _log_prompt(step: int, total: int, text: str) -> str:
     return f"🧩 [{step}/{total}] {text}\nSend /cancel to stop."
 
 
+def _difficulty_reply_markup() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        DIFFICULTY_OPTIONS, resize_keyboard=True, one_time_keyboard=True
+    )
+
+
+def _pattern_option_rows() -> list[list[str]]:
+    labels = [
+        label
+        for _, label in sorted(
+            ROADMAP_PATTERN_LEVELS.values(), key=lambda item: (item[0], item[1].lower())
+        )
+    ]
+    return [labels[idx : idx + 2] for idx in range(0, len(labels), 2)]
+
+
+def _pattern_reply_markup() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        _pattern_option_rows(), resize_keyboard=True, one_time_keyboard=True
+    )
+
+
+def _normalize_difficulty_input(raw_value: str) -> str | None:
+    normalized = raw_value.strip().lower()
+    if normalized in {"easy", "medium", "hard"}:
+        return normalized
+    return None
+
+
+def _canonical_pattern_label(raw_value: str) -> str | None:
+    normalized = _normalize_pattern_key(raw_value)
+    canonical = ROADMAP_PATTERN_ALIASES.get(normalized, normalized)
+    info = ROADMAP_PATTERN_LEVELS.get(canonical)
+    if info is None:
+        return None
+    return info[1]
+
+
+def _extract_problem_slug(raw_value: str, *, provider: str) -> str | None:
+    value = raw_value.strip()
+    if not value:
+        return None
+    if value == "-":
+        return None
+
+    regex = LEETCODE_INPUT_RE if provider == "leetcode" else NEETCODE_INPUT_RE
+    matched = regex.match(value)
+    if matched:
+        return matched.group(1).lower()
+
+    if SLUG_INPUT_RE.fullmatch(value):
+        return value.lower()
+
+    return None
+
+
 def _telegram_user_id(update: Update) -> str:
     if update.effective_user is None:
         raise RuntimeError("Missing effective user")
@@ -326,58 +393,87 @@ async def log_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return ConversationHandler.END
-    await update.message.reply_text(_log_prompt(1, 10, "Enter problem title:"))
+    await update.message.reply_text(
+        _log_prompt(1, 10, "Enter problem title:"),
+        reply_markup=ReplyKeyboardRemove(),
+    )
     context.user_data["log_payload"] = {}
     return LOG_TITLE
 
 
 async def log_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["log_payload"]["title"] = update.message.text.strip()
-    await update.message.reply_text(_log_prompt(2, 10, "Difficulty? (easy|medium|hard)"))
+    await update.message.reply_text(
+        _log_prompt(2, 10, "Difficulty? Choose below or type easy/medium/hard."),
+        reply_markup=_difficulty_reply_markup(),
+    )
     return LOG_DIFFICULTY
 
 
 async def log_difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    difficulty = update.message.text.strip().lower()
-    if difficulty not in {"easy", "medium", "hard"}:
+    difficulty = _normalize_difficulty_input(update.message.text)
+    if difficulty is None:
         await update.message.reply_text(
-            "⚠️ Invalid difficulty. Use: easy, medium, or hard."
+            "⚠️ Unknown difficulty. Choose Easy, Medium, Hard, or type the exact value.",
+            reply_markup=_difficulty_reply_markup(),
         )
         return LOG_DIFFICULTY
     context.user_data["log_payload"]["difficulty"] = difficulty
     await update.message.reply_text(
-        _log_prompt(3, 10, "LeetCode slug? (or '-' to skip)")
+        _log_prompt(3, 10, "LeetCode URL or slug? (or '-' to skip)"),
+        reply_markup=ReplyKeyboardRemove(),
     )
     return LOG_LEETCODE_SLUG
 
 
 async def log_leetcode_slug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = update.message.text.strip()
-    context.user_data["log_payload"]["leetcode_slug"] = None if text == "-" else text
+    slug = _extract_problem_slug(text, provider="leetcode")
+    if text != "-" and slug is None:
+        await update.message.reply_text(
+            "⚠️ Invalid LeetCode input. Paste the full URL, the slug, or '-' to skip."
+        )
+        return LOG_LEETCODE_SLUG
+    context.user_data["log_payload"]["leetcode_slug"] = slug
     await update.message.reply_text(
-        _log_prompt(4, 10, "NeetCode slug? (example: maximum-depth-of-binary-tree)")
+        _log_prompt(4, 10, "NeetCode URL or slug? (required)"),
     )
     return LOG_NEETCODE_SLUG
 
 
 async def log_neetcode_slug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = update.message.text.strip()
-    if text == "-":
-        await update.message.reply_text("⚠️ NeetCode slug is required.")
+    slug = _extract_problem_slug(text, provider="neetcode")
+    if slug is None:
+        await update.message.reply_text(
+            "⚠️ Invalid NeetCode input. Paste the full URL or the slug."
+        )
         return LOG_NEETCODE_SLUG
-    context.user_data["log_payload"]["neetcode_slug"] = text
-    await update.message.reply_text(_log_prompt(5, 10, "Pattern? (example: sliding-window)"))
+    context.user_data["log_payload"]["neetcode_slug"] = slug
+    await update.message.reply_text(
+        _log_prompt(5, 10, "Pattern? Choose below or type the exact known pattern."),
+        reply_markup=_pattern_reply_markup(),
+    )
     return LOG_PATTERN
 
 
 async def log_pattern(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["log_payload"]["pattern"] = update.message.text.strip()
+    pattern = _canonical_pattern_label(update.message.text)
+    if pattern is None:
+        await update.message.reply_text(
+            "⚠️ Unknown pattern. Choose from the list or type the exact known pattern name.",
+            reply_markup=_pattern_reply_markup(),
+        )
+        return LOG_PATTERN
+    context.user_data["log_payload"]["pattern"] = pattern
     await update.message.reply_text(
         _log_prompt(
             6,
             10,
             "Solved time? Use 'now', ISO 8601, or YYYY-MM-DD HH:MM (local time).",
         )
+        ,
+        reply_markup=ReplyKeyboardRemove(),
     )
     return LOG_SOLVED_AT
 
