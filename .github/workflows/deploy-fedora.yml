@@ -1,0 +1,78 @@
+name: Deploy Fedora
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy
+        required: true
+        default: main
+        type: string
+
+concurrency:
+  group: leetcoach-deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Build Docker image
+        run: docker build -t leetcoach:ci .
+
+      - name: Unit tests (container)
+        run: docker run --rm leetcoach:ci test unit
+
+      - name: Integration tests (container)
+        run: docker run --rm leetcoach:ci test integration
+
+  deploy:
+    needs: test
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - leetcoach-fedora
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Prepare runtime env
+        run: |
+          test -f "$HOME/.config/leetcoach/.env"
+          cp "$HOME/.config/leetcoach/.env" .env
+
+      - name: Verify Docker access
+        run: docker info
+
+      - name: Build deploy image
+        run: docker compose build
+
+      - name: Apply migrations
+        run: docker compose run --rm bot migrate
+
+      - name: Restart services
+        run: docker compose up -d bot scheduler
+
+      - name: Health checks
+        run: |
+          docker compose ps
+          docker compose run --rm bot doctor
+          docker compose run --rm bot scheduler-doctor
+
+      - name: Recent logs
+        if: always()
+        run: |
+          docker compose logs --tail=50 bot || true
+          docker compose logs --tail=50 scheduler || true

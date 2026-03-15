@@ -177,6 +177,9 @@ Use this sequence on any host (local machine, VM, home server):
    - `docker compose logs -f bot`
    - `docker compose logs -f scheduler`
 
+For GitHub Actions based deployment onto your Fedora laptop, see:
+- [`docs/deploy-fedora-runner.md`](docs/deploy-fedora-runner.md)
+
 ## Data and Persistence
 
 - Compose uses a named Docker volume: `leetcoach_data`.
