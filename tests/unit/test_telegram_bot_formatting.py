@@ -15,6 +15,7 @@ from leetcoach.telegram_bot import (
     _neetcode_url,
     _parse_review_day,
     _normalize_solved_at,
+    _render_problem_detail,
     _render_due,
     _render_quiz_question,
     _render_quiz_reveal,
@@ -78,6 +79,7 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
     def test_render_problem_rows_includes_header_and_human_time(self) -> None:
         rows = [
             {
+                "user_problem_id": 10,
                 "title": "Validate Binary Search Tree",
                 "difficulty": "medium",
                 "pattern": "Trees",
@@ -86,9 +88,12 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
                 "neetcode_slug": "valid-binary-search-tree",
             }
         ]
-        text = _render_problem_rows(rows, "Europe/Berlin")
+        token_map = {"A1": ProblemToken(user_problem_id=10)}
+        text = _render_problem_rows(rows, token_map, "Europe/Berlin")
         self.assertIn("Your Problems", text)
         self.assertNotIn("<pre>", text)
+        self.assertIn("[A1]", text)
+        self.assertIn("Use /show A1", text)
         self.assertIn("Validate Binary Search Tree", text)
         self.assertIn("Medium", text)
         self.assertIn("Trees", text)
@@ -105,6 +110,7 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
     def test_render_problem_rows_groups_patterns_in_roadmap_order(self) -> None:
         rows = [
             {
+                "user_problem_id": 30,
                 "title": "Graph Valid Tree",
                 "difficulty": "medium",
                 "pattern": "Graphs",
@@ -113,6 +119,7 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
                 "neetcode_slug": "graph-valid-tree",
             },
             {
+                "user_problem_id": 10,
                 "title": "Contains Duplicate",
                 "difficulty": "easy",
                 "pattern": "Arrays and Hashing",
@@ -121,6 +128,7 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
                 "neetcode_slug": "contains-duplicate",
             },
             {
+                "user_problem_id": 20,
                 "title": "Binary Tree Right Side View",
                 "difficulty": "medium",
                 "pattern": "Tree DFS",
@@ -129,7 +137,12 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
                 "neetcode_slug": "binary-tree-right-side-view",
             },
         ]
-        text = _render_problem_rows(rows, "Europe/Berlin")
+        token_map = {
+            "A1": ProblemToken(user_problem_id=10),
+            "A2": ProblemToken(user_problem_id=20),
+            "A3": ProblemToken(user_problem_id=30),
+        }
+        text = _render_problem_rows(rows, token_map, "Europe/Berlin")
         self.assertLess(text.find("🧩 Arrays & Hashing"), text.find("🧩 Trees"))
         self.assertLess(text.find("🧩 Trees"), text.find("🧩 Graphs"))
 
@@ -278,6 +291,33 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertIn("Model: gemini-2.5-flash-lite", question_text)
         self.assertIn("Correct option: A", reveal_text)
         self.assertIn("Takeaway", reveal_text)
+
+    def test_render_problem_detail_includes_all_optional_fields(self) -> None:
+        row = {
+            "user_problem_id": "10",
+            "title": "Validate Binary Search Tree",
+            "difficulty": "medium",
+            "pattern": "Trees",
+            "solved_at": "2026-03-08T13:28:44+00:00",
+            "leetcode_slug": "validate-binary-search-tree",
+            "neetcode_slug": "valid-binary-search-tree",
+            "concepts": "Track lower and upper bounds recursively.",
+            "time_complexity": "O(n)",
+            "space_complexity": "O(h)",
+            "notes": "Careful with duplicates.",
+            "created_at": "2026-03-08T13:28:44+00:00",
+            "updated_at": "2026-03-08T13:28:44+00:00",
+        }
+        text = _render_problem_detail(row, "Europe/Berlin")
+        self.assertIn("Validate Binary Search Tree", text)
+        self.assertIn("Concepts:", text)
+        self.assertIn("Track lower and upper bounds recursively.", text)
+        self.assertIn("Time complexity:", text)
+        self.assertIn("O(n)", text)
+        self.assertIn("Space complexity:", text)
+        self.assertIn("O(h)", text)
+        self.assertIn("Notes:", text)
+        self.assertIn("Careful with duplicates.", text)
 
 
 if __name__ == "__main__":

@@ -71,7 +71,7 @@ Command contract lives in:
 Current commands:
 - `/start`, `/register`, `/help`
 - `/log`, `/due`, `/done <token> <7th|21st>`
-- `/search <query>`, `/list`, `/pattern <pattern-substring>`
+- `/search <query>`, `/list`, `/pattern <pattern-substring>`, `/show <token>`
 - `/quiz [topic]`, `/reveal`
 
 ## Operational Commands (via container)

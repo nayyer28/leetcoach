@@ -35,6 +35,7 @@ from leetcoach.services.log_problem_service import LogProblemInput, log_problem
 from leetcoach.services.query_service import (
     DueReviewItem,
     complete_review,
+    get_problem_detail,
     list_all_problems,
     list_by_pattern,
     list_due_reviews,
@@ -220,6 +221,8 @@ def _commands_help_text() -> str:
         "• /list\n"
         "• /pattern &lt;text&gt;\n"
         "• /search &lt;text&gt;\n\n"
+        "🔍 <b>Details</b>\n"
+        "• /show A1\n\n"
         "👤 <b>Registration</b>\n"
         "• /register\n\n"
         "ℹ️ <b>Help</b>\n"
@@ -707,8 +710,15 @@ async def reveal_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.reply_text(_render_quiz_reveal(result.question))
 
 
-def _render_problem_rows(rows: list[dict[str, str]], timezone_name: str) -> str:
+def _render_problem_rows(
+    rows: list[dict[str, str]],
+    token_map: dict[str, ProblemToken],
+    timezone_name: str,
+) -> str:
     lines: list[str] = ["📚 Your Problems", ""]
+    token_by_problem_id = {
+        token.user_problem_id: key for key, token in token_map.items()
+    }
     grouped: dict[tuple[str, int, str], list[dict[str, str]]] = {}
     for row in rows:
         level, pattern_label, pattern_key = _roadmap_pattern_info(row["pattern"])
@@ -725,15 +735,21 @@ def _render_problem_rows(rows: list[dict[str, str]], timezone_name: str) -> str:
             reverse=True,
         )
         for row in sorted_rows:
+            token = token_by_problem_id.get(int(row["user_problem_id"]))
             leetcode_url = _leetcode_url(row["leetcode_slug"] or None)
             neetcode_url = _neetcode_url(row["neetcode_slug"] or None)
-            lines.append(f"{idx}. {row['title']}")
+            if token:
+                lines.append(f"{idx}. [{token}] {row['title']}")
+            else:
+                lines.append(f"{idx}. {row['title']}")
             lines.append(
                 (
                     f"   {row['difficulty'].title()} • {row['pattern']} • "
                     f"{_format_timestamp_compact(row['solved_at'], timezone_name)}"
                 )
             )
+            if token:
+                lines.append(f"   Use /show {token}")
             if leetcode_url:
                 lines.append(f"   🔗 LC: {leetcode_url}")
             if neetcode_url:
@@ -742,6 +758,35 @@ def _render_problem_rows(rows: list[dict[str, str]], timezone_name: str) -> str:
         lines.append("")
     if lines and not lines[-1]:
         lines.pop()
+    return "\n".join(lines)
+
+
+def _render_problem_detail(row: dict[str, str], timezone_name: str) -> str:
+    leetcode_url = _leetcode_url(row["leetcode_slug"] or None)
+    neetcode_url = _neetcode_url(row["neetcode_slug"] or None)
+    lines = [
+        f"📘 {row['title']}",
+        f"Difficulty: {row['difficulty'].title()}",
+        f"Pattern: {row['pattern']}",
+        f"Solved: {_format_timestamp(row['solved_at'], timezone_name)}",
+    ]
+    if leetcode_url:
+        lines.append(f"LeetCode: {leetcode_url}")
+    if neetcode_url:
+        lines.append(f"NeetCode: {neetcode_url}")
+    lines.append("")
+    lines.append("Concepts:")
+    lines.append(row["concepts"] or "-")
+    lines.append("")
+    lines.append("Time complexity:")
+    lines.append(row["time_complexity"] or "-")
+    lines.append("")
+    lines.append("Space complexity:")
+    lines.append(row["space_complexity"] or "-")
+    if row["notes"]:
+        lines.append("")
+        lines.append("Notes:")
+        lines.append(row["notes"])
     return "\n".join(lines)
 
 
@@ -783,6 +828,14 @@ async def _reply_long_text(update: Update, text: str) -> None:
         await update.message.reply_text(chunk)
 
 
+def _browse_token_map(
+    context: ContextTypes.DEFAULT_TYPE, telegram_user_id: str, rows: list[dict[str, Any]]
+) -> dict[str, ProblemToken]:
+    token_store: DueTokenStore = context.application.bot_data["browse_tokens"]
+    user_problem_ids = [int(row["user_problem_id"]) for row in rows]
+    return token_store.put(telegram_user_id, user_problem_ids)
+
+
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
@@ -796,7 +849,8 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not rows:
         await update.message.reply_text("🔎 No matching problems.")
         return
-    await _reply_long_text(update, _render_problem_rows(rows, cfg.timezone))
+    token_map = _browse_token_map(context, telegram_user_id, rows)
+    await _reply_long_text(update, _render_problem_rows(rows, token_map, cfg.timezone))
 
 
 async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -812,7 +866,8 @@ async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not rows:
         await update.message.reply_text("🧠 No problems for this pattern.")
         return
-    await _reply_long_text(update, _render_problem_rows(rows, cfg.timezone))
+    token_map = _browse_token_map(context, telegram_user_id, rows)
+    await _reply_long_text(update, _render_problem_rows(rows, token_map, cfg.timezone))
 
 
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -824,7 +879,34 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not rows:
         await update.message.reply_text("🗂️ No logged problems yet.")
         return
-    await _reply_long_text(update, _render_problem_rows(rows, cfg.timezone))
+    token_map = _browse_token_map(context, telegram_user_id, rows)
+    await _reply_long_text(update, _render_problem_rows(rows, token_map, cfg.timezone))
+
+
+async def show_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
+    telegram_user_id = _telegram_user_id(update)
+    if not context.args:
+        await update.message.reply_text("Usage: /show <token>")
+        return
+    token_store: DueTokenStore = context.application.bot_data["browse_tokens"]
+    token = token_store.get(telegram_user_id, context.args[0])
+    if token is None:
+        await update.message.reply_text(
+            "⚠️ Unknown/expired token. Run /list, /search, or /pattern again."
+        )
+        return
+    row = get_problem_detail(
+        cfg.db_path, telegram_user_id, user_problem_id=token.user_problem_id
+    )
+    if row is None:
+        await update.message.reply_text(
+            "⚠️ Could not find this problem anymore. Run /list again."
+        )
+        return
+    await _reply_long_text(update, _render_problem_detail(row, cfg.timezone))
 
 
 async def default_text_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -920,6 +1002,7 @@ def build_application(config: AppConfig) -> Application:
     )
     app.bot_data["config"] = config
     app.bot_data["due_tokens"] = DueTokenStore()
+    app.bot_data["browse_tokens"] = DueTokenStore()
     if config.gemini_api_key:
         app.bot_data["quiz_provider"] = GeminiProvider(
             api_key=config.gemini_api_key,
@@ -963,6 +1046,7 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("pattern", pattern_command))
     app.add_handler(CommandHandler("list", list_command))
+    app.add_handler(CommandHandler("show", show_command))
     app.add_handler(CommandHandler("quiz", quiz_command))
     app.add_handler(CommandHandler("reveal", reveal_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, default_text_command))

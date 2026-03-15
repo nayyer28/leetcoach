@@ -14,6 +14,7 @@ Outbound reminders are delivered by the scheduler process (`lch scheduler`), not
 - `/search <query>`
 - `/list`
 - `/pattern <pattern>`
+- `/show <token>`
 - `/quiz [topic]`
 - `/reveal`
 
@@ -218,6 +219,32 @@ Success response:
 
 No data response:
 - `No problems for this pattern.`
+
+## `/show <token>`
+
+Purpose:
+- show the full stored detail for one logged problem
+
+Input:
+- short token from the latest `/list`, `/search`, or `/pattern` output
+- example: `/show A1`
+
+Behavior:
+- resolves token to one `user_problem_id`
+- returns full stored problem detail:
+  - title
+  - difficulty
+  - pattern
+  - solved timestamp
+  - LeetCode / NeetCode links
+  - concepts
+  - time complexity
+  - space complexity
+  - notes
+
+Error responses:
+- missing token -> usage hint
+- unknown/expired token -> ask user to run `/list`, `/search`, or `/pattern` again
 
 ## `/quiz [topic]`
 
