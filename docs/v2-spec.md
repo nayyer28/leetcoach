@@ -42,12 +42,13 @@ Topic handling:
 
 Behavior:
 - the next non-command message after an active `/quiz` is treated as answer input
-- input is free text (examples: `B`, `I think C because...`)
+- input must include an option choice (examples: `B`, `I think C because...`)
 - bot runs answer-check against stored question payload
 - bot replies with:
   - correctness verdict
   - why this is correct/incorrect
   - concise formal concept explanation
+- if no option choice is detected, bot rejects the input locally and asks for `A/B/C/D`
 
 If no active quiz exists:
 - bot replies with guidance to run `/quiz` first

@@ -28,7 +28,11 @@ from leetcoach.telegram_bot import (
     _render_quiz_reveal,
     _render_problem_rows,
 )
-from leetcoach.services.quiz_service import QuizQuestionPayload, is_known_quiz_topic
+from leetcoach.services.quiz_service import (
+    QuizQuestionPayload,
+    extract_quiz_answer_option,
+    is_known_quiz_topic,
+)
 
 
 class TelegramBotFormattingUnitTest(unittest.TestCase):
@@ -349,6 +353,12 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertTrue(is_known_quiz_topic("dp"))
         self.assertTrue(is_known_quiz_topic("Binary Search"))
         self.assertFalse(is_known_quiz_topic("made-up-topic-xyz"))
+
+    def test_extract_quiz_answer_option(self) -> None:
+        self.assertEqual(extract_quiz_answer_option("A"), "A")
+        self.assertEqual(extract_quiz_answer_option("b because hash map"), "B")
+        self.assertEqual(extract_quiz_answer_option("option c"), "C")
+        self.assertIsNone(extract_quiz_answer_option("kjfnaekfnaejkfnaekfjnefan"))
 
     def test_render_quiz_question_and_reveal(self) -> None:
         question = QuizQuestionPayload(
