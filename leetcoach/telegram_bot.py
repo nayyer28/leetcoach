@@ -16,7 +16,7 @@ from telegram import (
     ReplyKeyboardRemove,
     Update,
 )
-from telegram.constants import ParseMode
+from telegram.constants import ChatAction, ParseMode
 from telegram.error import Conflict, NetworkError
 from telegram.ext import (
     Application,
@@ -285,6 +285,19 @@ def _log_prompt(step: int, total: int, text: str) -> str:
     return f"🧩 [{step}/{total}] {text}\nSend /cancel to stop."
 
 
+async def _reply_log_inline_selection(target: Any, label: str) -> None:
+    await target.reply_text(f"✓ Selected: {label}")
+
+
+async def _send_typing(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_chat is None:
+        return
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id,
+        action=ChatAction.TYPING,
+    )
+
+
 def _difficulty_inline_markup() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
@@ -515,6 +528,7 @@ async def log_difficulty_callback(
     await query.answer()
     await _clear_inline_keyboard(update)
     raw_value = query.data.removeprefix(LOG_DIFFICULTY_CALLBACK_PREFIX)
+    await _reply_log_inline_selection(query.message, raw_value.title())
     return await _set_log_difficulty(update, context, raw_value)
 
 
@@ -585,6 +599,8 @@ async def log_pattern_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
     await _clear_inline_keyboard(update)
     raw_value = query.data.removeprefix(LOG_PATTERN_CALLBACK_PREFIX)
+    label = _canonical_pattern_label(raw_value) or raw_value
+    await _reply_log_inline_selection(query.message, label)
     return await _set_log_pattern(update, context, raw_value)
 
 
@@ -871,6 +887,7 @@ async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         return
 
+    await _send_typing(update, context)
     try:
         result = start_quiz(
             db_path=cfg.db_path,
@@ -1142,6 +1159,7 @@ async def default_text_command(update: Update, context: ContextTypes.DEFAULT_TYP
                     "⚠️ Quiz provider is not configured. Set GEMINI_API_KEY and restart bot."
                 )
                 return
+            await _send_typing(update, context)
             try:
                 result = start_quiz(
                     db_path=cfg.db_path,
