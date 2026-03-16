@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 from leetcoach.config import AppConfig
 from leetcoach.services.quiz_service import QuizQuestionPayload, StartQuizResult
-from leetcoach.telegram_bot import quiz_command
+from leetcoach.telegram_bot import quiz_command, unknown_command
 
 
 class TelegramBotQuizFlowUnitTest(unittest.IsolatedAsyncioTestCase):
@@ -61,6 +61,33 @@ class TelegramBotQuizFlowUnitTest(unittest.IsolatedAsyncioTestCase):
         context.bot.send_chat_action.assert_awaited_once()
         message.reply_text.assert_awaited_once()
         self.assertIn("Quiz Time", message.reply_text.await_args.args[0])
+
+    async def test_unknown_command_returns_helpful_feedback(self) -> None:
+        message = SimpleNamespace(text="/quit", reply_text=AsyncMock())
+        update = SimpleNamespace(
+            message=message,
+            effective_user=SimpleNamespace(id=456),
+        )
+        context = SimpleNamespace(
+            application=SimpleNamespace(
+                bot_data={
+                    "config": AppConfig(
+                        environment="development",
+                        log_level="INFO",
+                        timezone="UTC",
+                        db_path=".local/leetcoach.db",
+                        telegram_bot_token="token",
+                        allowed_user_ids=frozenset(),
+                    )
+                }
+            )
+        )
+
+        await unknown_command(update, context)
+
+        message.reply_text.assert_awaited_once()
+        self.assertIn("/quit", message.reply_text.await_args.args[0])
+        self.assertIn("/help", message.reply_text.await_args.args[0])
 
 
 if __name__ == "__main__":

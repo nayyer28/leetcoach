@@ -21,6 +21,7 @@ from leetcoach.telegram_bot import (
     _normalize_difficulty_input,
     _parse_review_day,
     _normalize_solved_at,
+    _unknown_command_help_text,
     _pattern_inline_markup,
     _unknown_text_help_text,
     _render_problem_detail,
@@ -421,6 +422,12 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertIn("/help", text)
         self.assertIn("/log", text)
         self.assertIn("/quiz [topic]", text)
+
+    def test_unknown_command_help_mentions_command_and_options(self) -> None:
+        text = _unknown_command_help_text("/quit")
+        self.assertIn("I don’t recognize `/quit`", text)
+        self.assertIn("/help", text)
+        self.assertIn("/log", text)
 
 
 if __name__ == "__main__":

@@ -267,6 +267,22 @@ def _unknown_text_help_text() -> str:
     )
 
 
+def _unknown_command_help_text(command_text: str) -> str:
+    return (
+        f"🤔 I don’t recognize `{command_text}`.\n\n"
+        "Try one of these commands:\n"
+        "• /help\n"
+        "• /log\n"
+        "• /due\n"
+        "• /list\n"
+        "• /search <text>\n"
+        "• /pattern <name>\n"
+        "• /show <token>\n"
+        "• /quiz [topic]\n"
+        "• /reveal"
+    )
+
+
 def _clear_quiz_prompt_state(context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data.pop("quiz_unknown_topic", None)
 
@@ -1221,6 +1237,17 @@ async def default_text_command(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.message.reply_text(_unknown_text_help_text())
 
 
+async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
+    command_text = (update.message.text or "").strip().split()[0]
+    await update.message.reply_text(
+        _unknown_command_help_text(command_text),
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
 async def app_error_handler(_: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     error = context.error
     if isinstance(error, Conflict):
@@ -1306,6 +1333,7 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(CommandHandler("quiz", quiz_command))
     app.add_handler(CommandHandler("reveal", reveal_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, default_text_command))
+    app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
     app.add_error_handler(app_error_handler)
     return app
 
