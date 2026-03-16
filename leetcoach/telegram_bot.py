@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import re
 from datetime import UTC, datetime
@@ -37,10 +36,10 @@ from leetcoach.dao.users_dao import (
     set_user_reminder_hour_local,
     upsert_user,
 )
-from leetcoach.dao.problem_reviews_dao import (
-    list_last_reminded_batch_for_user,
-    list_pending_review_candidates_for_user,
-    mark_review_reminded,
+from leetcoach.dao.review_queue_dao import (
+    list_last_requested_batch_for_user,
+    list_next_review_candidates_for_user,
+    mark_review_requested,
 )
 from leetcoach.db.connection import get_connection
 from leetcoach.llm.gemini_provider import (
@@ -137,17 +136,6 @@ ROADMAP_PATTERN_ALIASES: dict[str, str] = {
 DIFFICULTY_OPTIONS = [["Easy", "Medium", "Hard"]]
 LOG_DIFFICULTY_CALLBACK_PREFIX = "log:difficulty:"
 LOG_PATTERN_CALLBACK_PREFIX = "log:pattern:"
-
-
-@dataclass(frozen=True)
-class DueProblemEntry:
-    user_problem_id: int
-    title: str
-    leetcode_slug: str | None
-    neetcode_slug: str | None
-    solved_at: str
-    checkpoints: dict[int, DueReviewItem]
-
 
 (
     LOG_TITLE,
@@ -253,7 +241,7 @@ def _commands_help_text() -> str:
         "• /reveal\n\n"
         "⏰ <b>Review</b>\n"
         "• /due\n"
-        "• /done A1 7th\n\n"
+        "• /reviewed A1\n\n"
         "• /remind\n"
         "• /remind last\n"
         "• /remind new\n"
@@ -280,6 +268,7 @@ def _unknown_text_help_text() -> str:
         "• /log\n"
         "• /due\n"
         "• /remind\n"
+        "• /reviewed <token>\n"
         "• /list\n"
         "• /search <text>\n"
         "• /pattern <name>\n"
@@ -297,6 +286,7 @@ def _unknown_command_help_text(command_text: str) -> str:
         "• /log\n"
         "• /due\n"
         "• /remind\n"
+        "• /reviewed <token>\n"
         "• /list\n"
         "• /search <text>\n"
         "• /pattern <name>\n"
@@ -723,77 +713,38 @@ async def log_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 def _render_due(
-    entries: list[DueProblemEntry], token_map: dict[str, ProblemToken], timezone_name: str
+    items: list[DueReviewItem], token_map: dict[str, ProblemToken], timezone_name: str
 ) -> str:
     rev_lookup = {v.user_problem_id: k for k, v in token_map.items()}
     lines: list[str] = ["⏰ Due Reviews", ""]
-    for idx, entry in enumerate(entries, start=1):
-        token = rev_lookup[entry.user_problem_id]
-        lines.append(f"{idx}. [{token}] {entry.title}")
+    for idx, item in enumerate(items, start=1):
+        token = rev_lookup[item.user_problem_id]
+        lines.append(f"{idx}. [{token}] {item.title}")
         lines.append(
-            f"   First attempt • {_format_timestamp_compact(entry.solved_at, timezone_name)}"
+            f"   First attempt • {_format_timestamp_compact(item.solved_at, timezone_name)}"
         )
-        for review_day in (7, 21):
-            checkpoint = entry.checkpoints.get(review_day)
-            if checkpoint is None:
-                continue
+        lines.append(f"   Reviews completed • {item.review_count}")
+        lines.append(
+            "   Outstanding since • "
+            + _format_timestamp_compact(item.requested_at, timezone_name)
+        )
+        if item.last_reviewed_at:
             lines.append(
-                (
-                    f"   Day {review_day} • {checkpoint.status.upper()} • "
-                    f"{_format_timestamp_compact(checkpoint.due_at, timezone_name)}"
-                )
+                "   Last reviewed • "
+                + _format_timestamp_compact(item.last_reviewed_at, timezone_name)
             )
-        leetcode = _leetcode_url(entry.leetcode_slug)
+        leetcode = _leetcode_url(item.leetcode_slug)
         if leetcode:
             lines.append(f"   🔗 LC: {leetcode}")
-        neetcode = _neetcode_url(entry.neetcode_slug)
+        neetcode = _neetcode_url(item.neetcode_slug)
         if neetcode:
             lines.append(f"   🔗 NC: {neetcode}")
         lines.append("")
     if lines and not lines[-1]:
         lines.pop()
     lines.append("")
-    lines.append("Use /done A1 7th")
+    lines.append("Use /reviewed A1")
     return "\n".join(lines)
-
-
-def _group_due_entries(items: list[DueReviewItem]) -> list[DueProblemEntry]:
-    grouped: dict[int, DueProblemEntry] = {}
-    for item in items:
-        entry = grouped.get(item.user_problem_id)
-        if entry is None:
-            grouped[item.user_problem_id] = DueProblemEntry(
-                user_problem_id=item.user_problem_id,
-                title=item.title,
-                leetcode_slug=item.leetcode_slug,
-                neetcode_slug=item.neetcode_slug,
-                solved_at=item.solved_at,
-                checkpoints={item.review_day: item},
-            )
-            continue
-        entry.checkpoints[item.review_day] = item
-
-    def _sort_key(entry: DueProblemEntry) -> tuple[int, datetime]:
-        overdue_due = [
-            datetime.fromisoformat(cp.due_at)
-            for cp in entry.checkpoints.values()
-            if cp.status == "overdue"
-        ]
-        if overdue_due:
-            return (0, min(overdue_due))
-        all_due = [datetime.fromisoformat(cp.due_at) for cp in entry.checkpoints.values()]
-        return (1, min(all_due))
-
-    return sorted(grouped.values(), key=_sort_key)
-
-
-def _parse_review_day(raw: str) -> int | None:
-    value = raw.strip().lower()
-    if value in {"7", "7th"}:
-        return 7
-    if value in {"21", "21st"}:
-        return 21
-    return None
 
 
 async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -806,14 +757,13 @@ async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     items = list_due_reviews(cfg.db_path, telegram_user_id)
     if not items:
         await update.message.reply_text(
-            "✅ No pending/overdue reviews right now.\nUse /list to see your logged problems."
+            "✅ No outstanding reviews right now.\nUse /remind new or /list to keep going."
         )
         return
-    entries = _group_due_entries(items)
     token_map = token_store.put(
-        telegram_user_id, [entry.user_problem_id for entry in entries]
+        telegram_user_id, [item.user_problem_id for item in items]
     )
-    await _reply_long_text(update, _render_due(entries, token_map, cfg.timezone))
+    await _reply_long_text(update, _render_due(items, token_map, cfg.timezone))
 
 
 def _render_remind_settings(
@@ -845,7 +795,7 @@ def _render_remind_settings(
 
 
 def _render_last_batch(batch: list[Any], timezone_name: str) -> str:
-    sent_at = str(batch[0]["last_reminded_at"])
+    sent_at = str(batch[0]["last_review_requested_at"])
     lines = [
         "🕘 Last Reminder Batch",
         f"Sent at: {_format_timestamp(sent_at, timezone_name)}",
@@ -853,8 +803,9 @@ def _render_last_batch(batch: list[Any], timezone_name: str) -> str:
     ]
     for index, row in enumerate(batch, start=1):
         candidate = row_to_candidate(row)
-        lines.append(f"{index}. {candidate.title} | day {candidate.review_day}")
-        lines.append(f"   Due: {_format_timestamp(candidate.due_at, timezone_name)}")
+        lines.append(f"{index}. {candidate.title}")
+        lines.append(f"   Reviews completed: {candidate.review_count}")
+        lines.append(f"   Queue position: {candidate.queue_position}")
     return "\n".join(lines)
 
 
@@ -974,7 +925,7 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if len(context.args) != 1:
                 await update.message.reply_text("Usage: /remind last")
                 return
-            batch = list_last_reminded_batch_for_user(conn, user_id=user_id)
+            batch = list_last_requested_batch_for_user(conn, user_id=user_id)
             if not batch:
                 await update.message.reply_text("📭 No reminder batch has been sent yet.")
                 return
@@ -985,9 +936,7 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if len(context.args) != 1:
                 await update.message.reply_text("Usage: /remind new")
                 return
-            rows = list_pending_review_candidates_for_user(
-                conn, user_id=user_id, now_iso=now_iso
-            )
+            rows = list_next_review_candidates_for_user(conn, user_id=user_id)
             selected = select_candidates_for_batch(
                 [row_to_candidate(row) for row in rows],
                 now_iso=now_iso,
@@ -995,12 +944,15 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
             if not selected:
                 await update.message.reply_text(
-                    "✅ No extra reminder candidate is due right now."
+                    "✅ No extra reminder candidate is available right now."
                 )
                 return
             candidate = selected[0]
-            marked = mark_review_reminded(
-                conn, review_id=candidate.review_id, reminded_at=now_iso
+            marked = mark_review_requested(
+                conn,
+                user_id=user_id,
+                user_problem_id=candidate.user_problem_id,
+                requested_at=now_iso,
             )
             if marked:
                 conn.commit()
@@ -1019,38 +971,39 @@ async def reminder_count_alias_command(
     await remind_command(update, context)
 
 
-async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+def _resolve_problem_token(
+    context: ContextTypes.DEFAULT_TYPE, telegram_user_id: str, token: str
+) -> ProblemToken | None:
+    due_store: DueTokenStore = context.application.bot_data["due_tokens"]
+    browse_store: DueTokenStore = context.application.bot_data["browse_tokens"]
+    return due_store.get(telegram_user_id, token) or browse_store.get(
+        telegram_user_id, token
+    )
+
+
+async def reviewed_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return
     _interrupt_quiz_if_needed(cfg, update, context)
-    token_store: DueTokenStore = context.application.bot_data["due_tokens"]
     telegram_user_id = _telegram_user_id(update)
-    if len(context.args) < 2:
-        await update.message.reply_text(
-            "Usage: /done <token> <7th|21st> (example: /done A1 7th)"
-        )
+    if len(context.args) != 1:
+        await update.message.reply_text("Usage: /reviewed <token> (example: /reviewed A1)")
         return
     token = context.args[0].upper()
-    review_day = _parse_review_day(context.args[1])
-    if review_day is None:
+    problem_ref = _resolve_problem_token(context, telegram_user_id, token)
+    if problem_ref is None:
         await update.message.reply_text(
-            "Review day must be 7th or 21st. Example: /done A1 21st"
+            "⚠️ Unknown/expired token. Run /due or /list again."
         )
         return
-    problem_ref = token_store.get(telegram_user_id, token)
-    if problem_ref is None:
-        await update.message.reply_text("⚠️ Unknown/expired token. Run /due again.")
-        return
-    ok = complete_review(
-        cfg.db_path, telegram_user_id, problem_ref.user_problem_id, review_day
-    )
+    ok = complete_review(cfg.db_path, telegram_user_id, problem_ref.user_problem_id)
     if not ok:
         await update.message.reply_text(
-            "⚠️ Could not mark done for this review day. Run /due again."
+            "⚠️ Could not mark this problem as reviewed. Run /due or /list again."
         )
         return
-    await update.message.reply_text(f"✅ Marked complete: {token} day {review_day}")
+    await update.message.reply_text(f"✅ Marked reviewed: {token}")
 
 
 def _render_quiz_question(question: QuizQuestionPayload, model_used: str | None) -> str:
@@ -1555,7 +1508,7 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(
         CommandHandler(["reminder_count", "remindercount"], reminder_count_alias_command)
     )
-    app.add_handler(CommandHandler("done", done_command))
+    app.add_handler(CommandHandler(["reviewed", "done"], reviewed_command))
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("pattern", pattern_command))
     app.add_handler(CommandHandler("list", list_command))

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
 
@@ -18,7 +19,7 @@ from leetcoach.services.query_service import (
 
 
 class QueryServiceIntegrationTest(unittest.TestCase):
-    def test_due_complete_search_pattern_and_list_flow(self) -> None:
+    def test_due_reviewed_search_pattern_and_list_flow(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "leetcoach-test.db"
             migrate_database(str(db_path))
@@ -75,20 +76,27 @@ class QueryServiceIntegrationTest(unittest.TestCase):
             self.assertEqual(detail["concepts"], "deque monotonic queue")
             self.assertEqual(detail["notes"], "deque notes")
 
+            with sqlite3.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    UPDATE user_problems
+                    SET last_review_requested_at = ?
+                    WHERE user_id = (SELECT id FROM users WHERE telegram_user_id = ?)
+                    """,
+                    (datetime.now(UTC).isoformat(), "u-1"),
+                )
+                conn.commit()
+
             due = list_due_reviews(str(db_path), "u-1")
             self.assertEqual(len(due), 2)
-            self.assertTrue(all(item.status in {"pending", "overdue"} for item in due))
+            self.assertTrue(all(item.status == "pending" for item in due))
 
             first = due[0]
-            ok = complete_review(
-                str(db_path), "u-1", first.user_problem_id, first.review_day
-            )
+            ok = complete_review(str(db_path), "u-1", first.user_problem_id)
             self.assertTrue(ok)
 
-            second_try = complete_review(
-                str(db_path), "u-1", first.user_problem_id, first.review_day
-            )
-            self.assertFalse(second_try)
+            second_try = complete_review(str(db_path), "u-1", first.user_problem_id)
+            self.assertTrue(second_try)
 
             due_after = list_due_reviews(str(db_path), "u-1")
             self.assertEqual(len(due_after), 1)
@@ -103,7 +111,8 @@ class QueryServiceIntegrationTest(unittest.TestCase):
 
             unknown_user_due = list_due_reviews(str(db_path), "u-missing")
             self.assertEqual(unknown_user_due, [])
-    def test_due_complete_search_and_pattern_flow(self) -> None:
+
+    def test_due_only_returns_outstanding_requested_items(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "leetcoach-test.db"
             migrate_database(str(db_path))
@@ -142,31 +151,21 @@ class QueryServiceIntegrationTest(unittest.TestCase):
                 ),
             )
 
+            with sqlite3.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    UPDATE user_problems
+                    SET last_review_requested_at = ?
+                    WHERE user_id = (SELECT id FROM users WHERE telegram_user_id = ?)
+                      AND pattern = ?
+                    """,
+                    (datetime.now(UTC).isoformat(), "u-1", "tree-dfs"),
+                )
+                conn.commit()
+
             due = list_due_reviews(str(db_path), "u-1")
-            self.assertEqual(len(due), 2)
-            self.assertTrue(all(item.status in {"pending", "overdue"} for item in due))
-            self.assertTrue(all(item.title == "Maximum Depth of Binary Tree" for item in due))
-
-            first = due[0]
-            ok = complete_review(
-                str(db_path), "u-1", first.user_problem_id, first.review_day
-            )
-            self.assertTrue(ok)
-            second_try = complete_review(
-                str(db_path), "u-1", first.user_problem_id, first.review_day
-            )
-            self.assertFalse(second_try)
-
-            due_after = list_due_reviews(str(db_path), "u-1")
-            self.assertEqual(len(due_after), 1)
-
-            search_rows = search_problems(str(db_path), "u-1", "deque")
-            self.assertEqual(len(search_rows), 1)
-            self.assertEqual(search_rows[0]["title"], "Sliding Window Maximum")
-
-            pattern_rows = list_by_pattern(str(db_path), "u-1", "tree-dfs")
-            self.assertEqual(len(pattern_rows), 1)
-            self.assertEqual(pattern_rows[0]["title"], "Maximum Depth of Binary Tree")
+            self.assertEqual(len(due), 1)
+            self.assertEqual(due[0].title, "Maximum Depth of Binary Tree")
 
             unknown_user_due = list_due_reviews(str(db_path), "u-missing")
             self.assertEqual(unknown_user_due, [])

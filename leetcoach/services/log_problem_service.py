@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from leetcoach.dao.problem_reviews_dao import ensure_review_checkpoints
 from leetcoach.dao.problems_dao import upsert_problem
+from leetcoach.dao.review_queue_dao import ensure_review_queue_state
 from leetcoach.dao.user_problems_dao import upsert_user_problem
 from leetcoach.dao.users_dao import upsert_user
 from leetcoach.db.connection import get_connection
@@ -64,10 +64,10 @@ def log_problem(db_path: str, payload: LogProblemInput) -> LogProblemResult:
             notes=payload.notes,
             now_iso=now_iso,
         )
-        ensure_review_checkpoints(
+        ensure_review_queue_state(
             conn,
+            user_id=user_id,
             user_problem_id=user_problem_id,
-            solved_at=payload.solved_at,
             now_iso=now_iso,
         )
         conn.commit()

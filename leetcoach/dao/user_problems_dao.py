@@ -16,6 +16,15 @@ def upsert_user_problem(
     notes: str | None,
     now_iso: str,
 ) -> int:
+    row = conn.execute(
+        """
+        SELECT COALESCE(MAX(queue_position), 0) AS max_position
+        FROM user_problems
+        WHERE user_id = ?
+        """,
+        (user_id,),
+    ).fetchone()
+    next_queue_position = int(row["max_position"]) + 10 if row is not None else 10
     conn.execute(
         """
         INSERT INTO user_problems (
@@ -27,9 +36,10 @@ def upsert_user_problem(
             time_complexity,
             space_complexity,
             notes,
+            queue_position,
             created_at,
             updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, problem_id) DO UPDATE SET
             pattern = excluded.pattern,
             solved_at = excluded.solved_at,
@@ -48,6 +58,7 @@ def upsert_user_problem(
             time_complexity,
             space_complexity,
             notes,
+            next_queue_position,
             now_iso,
             now_iso,
         ),
