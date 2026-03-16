@@ -70,7 +70,7 @@ Command contract lives in:
 
 Current commands:
 - `/start`, `/register`, `/help`
-- `/log`, `/due`, `/done <token> <7th|21st>`, `/reminder`, `/reminder_count <n>`
+- `/log`, `/due`, `/done <token> <7th|21st>`, `/remind`
 - `/search <query>`, `/list`, `/pattern <pattern-substring>`, `/show <token>`
 - `/quiz [topic]`, `/reveal`
 
@@ -132,8 +132,12 @@ This checks:
 
 Reminder settings:
 - `LEETCOACH_REMINDER_DAILY_MAX` is the app-wide default
-- `/reminder` shows your current effective daily reminder count
-- `/reminder_count <n>` sets your personal daily reminder count (`1` to `10`)
+- `LEETCOACH_REMINDER_HOUR_LOCAL` is the app-wide default reminder hour
+- `/remind` shows your current effective reminder settings
+- `/remind count <n>` sets your personal daily reminder count (`1` to `10`)
+- `/remind time <hour>` sets your personal reminder hour (`0` to `23`)
+- `/remind last` shows the most recent reminder batch sent to you
+- `/remind new` sends one additional due reminder candidate immediately
 
 Run one scheduler tick manually:
 

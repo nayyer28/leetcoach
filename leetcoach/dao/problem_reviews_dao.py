@@ -90,7 +90,8 @@ def list_pending_review_candidates(
             p.neetcode_slug,
             u.telegram_chat_id,
             u.timezone,
-            u.reminder_daily_max
+            u.reminder_daily_max,
+            u.reminder_hour_local
         FROM problem_reviews pr
         JOIN user_problems up ON up.id = pr.user_problem_id
         JOIN problems p ON p.id = up.problem_id
@@ -100,6 +101,78 @@ def list_pending_review_candidates(
         ORDER BY pr.due_at ASC
         """,
         (now_iso,),
+    ).fetchall()
+
+
+def list_pending_review_candidates_for_user(
+    conn: sqlite3.Connection, *, user_id: int, now_iso: str
+) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT
+            pr.id AS review_id,
+            pr.user_problem_id,
+            pr.review_day,
+            pr.due_at,
+            pr.buffer_until,
+            pr.last_reminded_at,
+            up.solved_at,
+            p.title,
+            p.leetcode_slug,
+            p.neetcode_slug,
+            u.telegram_chat_id,
+            u.timezone,
+            u.reminder_daily_max,
+            u.reminder_hour_local
+        FROM problem_reviews pr
+        JOIN user_problems up ON up.id = pr.user_problem_id
+        JOIN problems p ON p.id = up.problem_id
+        JOIN users u ON u.id = up.user_id
+        WHERE pr.completed_at IS NULL
+          AND up.user_id = ?
+          AND pr.due_at <= ?
+        ORDER BY pr.due_at ASC
+        """,
+        (user_id, now_iso),
+    ).fetchall()
+
+
+def list_last_reminded_batch_for_user(
+    conn: sqlite3.Connection, *, user_id: int
+) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        WITH last_batch AS (
+            SELECT MAX(pr.last_reminded_at) AS last_reminded_at
+            FROM problem_reviews pr
+            JOIN user_problems up ON up.id = pr.user_problem_id
+            WHERE up.user_id = ?
+        )
+        SELECT
+            pr.id AS review_id,
+            pr.user_problem_id,
+            pr.review_day,
+            pr.due_at,
+            pr.buffer_until,
+            pr.last_reminded_at,
+            up.solved_at,
+            p.title,
+            p.leetcode_slug,
+            p.neetcode_slug,
+            u.telegram_chat_id,
+            u.timezone,
+            u.reminder_daily_max,
+            u.reminder_hour_local
+        FROM problem_reviews pr
+        JOIN user_problems up ON up.id = pr.user_problem_id
+        JOIN problems p ON p.id = up.problem_id
+        JOIN users u ON u.id = up.user_id
+        JOIN last_batch lb ON lb.last_reminded_at = pr.last_reminded_at
+        WHERE up.user_id = ?
+          AND pr.last_reminded_at IS NOT NULL
+        ORDER BY pr.due_at ASC, pr.id ASC
+        """,
+        (user_id, user_id),
     ).fetchall()
 
 

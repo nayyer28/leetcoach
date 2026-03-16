@@ -35,6 +35,7 @@ class ReminderCandidate:
     telegram_chat_id: str
     timezone: str
     reminder_daily_max: int | None
+    reminder_hour_local: int | None
 
 
 @dataclass(frozen=True)
@@ -142,6 +143,67 @@ def build_daily_header_message() -> str:
     )
 
 
+def row_to_candidate(row: sqlite3.Row) -> ReminderCandidate:
+    return ReminderCandidate(
+        review_id=int(row["review_id"]),
+        user_problem_id=int(row["user_problem_id"]),
+        review_day=int(row["review_day"]),
+        due_at=str(row["due_at"]),
+        buffer_until=str(row["buffer_until"]),
+        last_reminded_at=(str(row["last_reminded_at"]) if row["last_reminded_at"] else None),
+        solved_at=str(row["solved_at"]),
+        title=str(row["title"]),
+        leetcode_slug=(str(row["leetcode_slug"]) if row["leetcode_slug"] else None),
+        neetcode_slug=(str(row["neetcode_slug"]) if row["neetcode_slug"] else None),
+        telegram_chat_id=str(row["telegram_chat_id"]),
+        timezone=str(row["timezone"]),
+        reminder_daily_max=(
+            int(row["reminder_daily_max"]) if row["reminder_daily_max"] is not None else None
+        ),
+        reminder_hour_local=(
+            int(row["reminder_hour_local"])
+            if row["reminder_hour_local"] is not None
+            else None
+        ),
+    )
+
+
+def select_candidates_for_batch(
+    candidates: list[ReminderCandidate], *, now_iso: str, daily_max: int
+) -> list[ReminderCandidate]:
+    due_and_unsent = [c for c in candidates if should_send_today(c, now_iso)]
+    if not due_and_unsent:
+        return []
+
+    unique_by_problem: dict[int, ReminderCandidate] = {}
+    for candidate in sorted(due_and_unsent, key=lambda item: datetime.fromisoformat(item.due_at)):
+        unique_by_problem.setdefault(candidate.user_problem_id, candidate)
+    unique = list(unique_by_problem.values())
+
+    def _is_pending(candidate: ReminderCandidate) -> bool:
+        return _parse_iso(now_iso) <= _parse_iso(candidate.buffer_until)
+
+    pending = sorted(
+        [candidate for candidate in unique if _is_pending(candidate)],
+        key=lambda item: _parse_iso(item.due_at),
+    )
+    overdue = sorted(
+        [candidate for candidate in unique if not _is_pending(candidate)],
+        key=lambda item: _parse_iso(item.due_at),
+    )
+
+    selected: list[ReminderCandidate] = []
+    if pending:
+        selected.append(pending[0])
+    if overdue and len(selected) < daily_max:
+        selected.append(overdue[0])
+    for candidate in pending[1:] + overdue[1:]:
+        if len(selected) >= daily_max:
+            break
+        selected.append(candidate)
+    return selected
+
+
 def _required_tables_exist(conn: sqlite3.Connection) -> tuple[bool, tuple[str, ...]]:
     expected = {
         "schema_migrations",
@@ -225,30 +287,7 @@ def run_scheduler_once(
     now = now_iso or datetime.now(UTC).isoformat()
     with get_connection(config.db_path) as conn:
         rows = list_pending_review_candidates(conn, now_iso=now)
-        candidates = [
-            ReminderCandidate(
-                review_id=int(r["review_id"]),
-                user_problem_id=int(r["user_problem_id"]),
-                review_day=int(r["review_day"]),
-                due_at=str(r["due_at"]),
-                buffer_until=str(r["buffer_until"]),
-                last_reminded_at=(
-                    str(r["last_reminded_at"]) if r["last_reminded_at"] else None
-                ),
-                solved_at=str(r["solved_at"]),
-                title=str(r["title"]),
-                leetcode_slug=(str(r["leetcode_slug"]) if r["leetcode_slug"] else None),
-                neetcode_slug=(str(r["neetcode_slug"]) if r["neetcode_slug"] else None),
-                telegram_chat_id=str(r["telegram_chat_id"]),
-                timezone=str(r["timezone"]),
-                reminder_daily_max=(
-                    int(r["reminder_daily_max"])
-                    if r["reminder_daily_max"] is not None
-                    else None
-                ),
-            )
-            for r in rows
-        ]
+        candidates = [row_to_candidate(r) for r in rows]
 
         sent = 0
         skipped = 0
@@ -258,14 +297,25 @@ def run_scheduler_once(
         selected_total = 0
         header_sent = 0
 
-        by_chat: dict[tuple[str, str, int | None], list[ReminderCandidate]] = {}
+        by_chat: dict[tuple[str, str, int | None, int | None], list[ReminderCandidate]] = {}
         for c in candidates:
             by_chat.setdefault(
-                (c.telegram_chat_id, c.timezone, c.reminder_daily_max), []
+                (
+                    c.telegram_chat_id,
+                    c.timezone,
+                    c.reminder_daily_max,
+                    c.reminder_hour_local,
+                ),
+                [],
             ).append(c)
 
-        for (chat_id, timezone, reminder_daily_max), group in by_chat.items():
-            if not _is_send_hour(timezone, now, config.reminder_hour_local):
+        for (chat_id, timezone, reminder_daily_max, reminder_hour_local), group in by_chat.items():
+            effective_reminder_hour = (
+                reminder_hour_local
+                if reminder_hour_local is not None
+                else config.reminder_hour_local
+            )
+            if not _is_send_hour(timezone, now, effective_reminder_hour):
                 skipped_hour += len(group)
                 continue
 
@@ -279,35 +329,10 @@ def run_scheduler_once(
             if not due_and_unsent:
                 continue
 
-            # Keep one candidate per problem to avoid sending two checkpoints for same problem in one day.
-            unique_by_problem: dict[int, ReminderCandidate] = {}
-            for c in sorted(due_and_unsent, key=lambda item: datetime.fromisoformat(item.due_at)):
-                unique_by_problem.setdefault(c.user_problem_id, c)
-            unique = list(unique_by_problem.values())
-
-            def _is_pending(c: ReminderCandidate) -> bool:
-                return _parse_iso(now) <= _parse_iso(c.buffer_until)
-
-            pending = sorted(
-                [c for c in unique if _is_pending(c)],
-                key=lambda item: _parse_iso(item.due_at),
-            )
-            overdue = sorted(
-                [c for c in unique if not _is_pending(c)],
-                key=lambda item: _parse_iso(item.due_at),
-            )
-
             effective_daily_max = reminder_daily_max or config.reminder_daily_max
-
-            selected: list[ReminderCandidate] = []
-            if pending:
-                selected.append(pending[0])
-            if overdue and len(selected) < effective_daily_max:
-                selected.append(overdue[0])
-            for c in pending[1:] + overdue[1:]:
-                if len(selected) >= effective_daily_max:
-                    break
-                selected.append(c)
+            selected = select_candidates_for_batch(
+                group, now_iso=now, daily_max=effective_daily_max
+            )
 
             if not selected:
                 continue
@@ -320,6 +345,7 @@ def run_scheduler_once(
                         "chat_id": chat_id,
                         "timezone": timezone,
                         "reminder_daily_max": effective_daily_max,
+                        "reminder_hour_local": effective_reminder_hour,
                         "group_size": len(group),
                         "due_and_unsent": len(due_and_unsent),
                         "selected": len(selected),

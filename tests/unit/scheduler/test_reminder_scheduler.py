@@ -11,6 +11,7 @@ from leetcoach.reminder_scheduler import (
     build_daily_header_message,
     build_reminder_message,
     scheduler_preflight,
+    select_candidates_for_batch,
     should_send_today,
     was_group_reminded_today,
 )
@@ -32,6 +33,7 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
             telegram_chat_id="chat-1",
             timezone="Europe/Berlin",
             reminder_daily_max=None,
+            reminder_hour_local=None,
         )
         self.assertTrue(should_send_today(candidate, "2026-03-08T12:00:00+00:00"))
 
@@ -50,6 +52,7 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
             telegram_chat_id="chat-1",
             timezone="Europe/Berlin",
             reminder_daily_max=None,
+            reminder_hour_local=None,
         )
         self.assertFalse(should_send_today(candidate, "2026-03-08T20:00:00+00:00"))
 
@@ -68,6 +71,7 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
             telegram_chat_id="chat-1",
             timezone="UTC",
             reminder_daily_max=None,
+            reminder_hour_local=None,
         )
         text = build_reminder_message(candidate)
         self.assertIn("LeetCoach Reminder", text)
@@ -90,6 +94,7 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
             telegram_chat_id="chat-1",
             timezone="Pacific/Kiritimati",
             reminder_daily_max=None,
+            reminder_hour_local=None,
         )
         self.assertTrue(should_send_today(candidate, "2026-03-09T10:15:00+00:00"))
 
@@ -109,6 +114,7 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
                 telegram_chat_id="chat-1",
                 timezone="UTC",
                 reminder_daily_max=None,
+                reminder_hour_local=None,
             ),
             ReminderCandidate(
                 review_id=2,
@@ -124,11 +130,53 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
                 telegram_chat_id="chat-1",
                 timezone="UTC",
                 reminder_daily_max=None,
+                reminder_hour_local=None,
             ),
         ]
         self.assertTrue(
             was_group_reminded_today(candidates, "2026-03-09T12:00:00+00:00", "UTC")
         )
+
+    def test_select_candidates_for_batch_prefers_pending_then_overdue(self) -> None:
+        selected = select_candidates_for_batch(
+            [
+                ReminderCandidate(
+                    review_id=1,
+                    user_problem_id=100,
+                    review_day=7,
+                    due_at="2026-03-08T09:00:00+00:00",
+                    buffer_until="2026-03-10T09:00:00+00:00",
+                    last_reminded_at=None,
+                    solved_at="2026-03-01T10:00:00+00:00",
+                    title="Pending",
+                    leetcode_slug="pending",
+                    neetcode_slug="pending",
+                    telegram_chat_id="chat-1",
+                    timezone="UTC",
+                    reminder_daily_max=None,
+                    reminder_hour_local=None,
+                ),
+                ReminderCandidate(
+                    review_id=2,
+                    user_problem_id=101,
+                    review_day=7,
+                    due_at="2026-03-01T09:00:00+00:00",
+                    buffer_until="2026-03-03T09:00:00+00:00",
+                    last_reminded_at=None,
+                    solved_at="2026-02-20T10:00:00+00:00",
+                    title="Overdue",
+                    leetcode_slug="overdue",
+                    neetcode_slug="overdue",
+                    telegram_chat_id="chat-1",
+                    timezone="UTC",
+                    reminder_daily_max=None,
+                    reminder_hour_local=None,
+                ),
+            ],
+            now_iso="2026-03-09T09:00:00+00:00",
+            daily_max=2,
+        )
+        self.assertEqual([candidate.title for candidate in selected], ["Pending", "Overdue"])
 
     def test_build_daily_header_message(self) -> None:
         text = build_daily_header_message()

@@ -34,7 +34,13 @@ from leetcoach.dao.users_dao import (
     get_user_id_by_telegram_user_id,
     get_user_reminder_preferences,
     set_user_reminder_daily_max,
+    set_user_reminder_hour_local,
     upsert_user,
+)
+from leetcoach.dao.problem_reviews_dao import (
+    list_last_reminded_batch_for_user,
+    list_pending_review_candidates_for_user,
+    mark_review_reminded,
 )
 from leetcoach.db.connection import get_connection
 from leetcoach.llm.gemini_provider import (
@@ -61,6 +67,11 @@ from leetcoach.services.quiz_service import (
     is_known_quiz_topic,
     reveal_quiz,
     start_quiz,
+)
+from leetcoach.reminder_scheduler import (
+    build_reminder_message,
+    row_to_candidate,
+    select_candidates_for_batch,
 )
 
 
@@ -243,8 +254,11 @@ def _commands_help_text() -> str:
         "⏰ <b>Review</b>\n"
         "• /due\n"
         "• /done A1 7th\n\n"
-        "• /reminder\n"
-        "• /reminder_count &lt;n&gt;\n\n"
+        "• /remind\n"
+        "• /remind last\n"
+        "• /remind new\n"
+        "• /remind count &lt;n&gt;\n"
+        "• /remind time &lt;hour&gt;\n\n"
         "📚 <b>Browse</b>\n"
         "• /list\n"
         "• /pattern &lt;text&gt;\n"
@@ -265,7 +279,7 @@ def _unknown_text_help_text() -> str:
         "• /help\n"
         "• /log\n"
         "• /due\n"
-        "• /reminder\n"
+        "• /remind\n"
         "• /list\n"
         "• /search <text>\n"
         "• /pattern <name>\n"
@@ -282,7 +296,7 @@ def _unknown_command_help_text(command_text: str) -> str:
         "• /help\n"
         "• /log\n"
         "• /due\n"
-        "• /reminder\n"
+        "• /remind\n"
         "• /list\n"
         "• /search <text>\n"
         "• /pattern <name>\n"
@@ -802,72 +816,207 @@ async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await _reply_long_text(update, _render_due(entries, token_map, cfg.timezone))
 
 
-async def reminder_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+def _render_remind_settings(
+    *,
+    custom_count: int | None,
+    effective_count: int,
+    custom_hour: int | None,
+    effective_hour: int,
+) -> str:
+    return "\n".join(
+        [
+            "⏰ Reminder Settings",
+            f"Daily reminder count: {effective_count}",
+            f"Reminder hour: {effective_hour:02d}:00",
+            (
+                "Count source: app default"
+                if custom_count is None
+                else "Count source: your custom setting"
+            ),
+            (
+                "Hour source: app default"
+                if custom_hour is None
+                else "Hour source: your custom setting"
+            ),
+            "",
+            "Commands: /remind last, /remind new, /remind count <n>, /remind time <hour>",
+        ]
+    )
+
+
+def _render_last_batch(batch: list[Any], timezone_name: str) -> str:
+    sent_at = str(batch[0]["last_reminded_at"])
+    lines = [
+        "🕘 Last Reminder Batch",
+        f"Sent at: {_format_timestamp(sent_at, timezone_name)}",
+        "",
+    ]
+    for index, row in enumerate(batch, start=1):
+        candidate = row_to_candidate(row)
+        lines.append(f"{index}. {candidate.title} | day {candidate.review_day}")
+        lines.append(f"   Due: {_format_timestamp(candidate.due_at, timezone_name)}")
+    return "\n".join(lines)
+
+
+def _remind_usage_text() -> str:
+    return (
+        "Usage:\n"
+        "/remind\n"
+        "/remind last\n"
+        "/remind new\n"
+        "/remind count <n>\n"
+        "/remind time <hour>"
+    )
+
+
+async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return
     _interrupt_quiz_if_needed(cfg, update, context)
+    telegram_user_id = _telegram_user_id(update)
+    now_iso = datetime.now(UTC).isoformat()
+
     with get_connection(cfg.db_path) as conn:
-        row = get_user_reminder_preferences(
-            conn, telegram_user_id=_telegram_user_id(update)
+        prefs = get_user_reminder_preferences(conn, telegram_user_id=telegram_user_id)
+        if prefs is None:
+            await update.message.reply_text("⚠️ Please run /start first.")
+            return
+
+        user_id = int(prefs["id"])
+        custom_count = (
+            int(prefs["reminder_daily_max"])
+            if prefs["reminder_daily_max"] is not None
+            else None
         )
-    if row is None:
-        await update.message.reply_text("⚠️ Please run /start first.")
-        return
-    custom = (
-        int(row["reminder_daily_max"])
-        if row["reminder_daily_max"] is not None
-        else None
-    )
-    effective = custom or cfg.reminder_daily_max
-    lines = [
-        "⏰ Reminder Settings",
-        f"Daily reminder count: {effective}",
-        f"Reminder hour: {cfg.reminder_hour_local}:00",
-    ]
-    if custom is None:
-        lines.append("Source: app default")
-    else:
-        lines.append("Source: your custom setting")
-    await update.message.reply_text("\n".join(lines))
+        custom_hour = (
+            int(prefs["reminder_hour_local"])
+            if prefs["reminder_hour_local"] is not None
+            else None
+        )
+        user_timezone = str(prefs["timezone"])
+
+        if not context.args:
+            await update.message.reply_text(
+                _render_remind_settings(
+                    custom_count=custom_count,
+                    effective_count=custom_count or cfg.reminder_daily_max,
+                    custom_hour=custom_hour,
+                    effective_hour=(
+                        custom_hour
+                        if custom_hour is not None
+                        else cfg.reminder_hour_local
+                    ),
+                )
+            )
+            return
+
+        action = context.args[0].lower()
+        if action == "count":
+            if len(context.args) != 2:
+                await update.message.reply_text("Usage: /remind count <n>")
+                return
+            try:
+                value = int(context.args[1])
+            except ValueError:
+                await update.message.reply_text("⚠️ Reminder count must be a number.")
+                return
+            if value < 1 or value > 10:
+                await update.message.reply_text(
+                    "⚠️ Reminder count must be between 1 and 10."
+                )
+                return
+            updated = set_user_reminder_daily_max(
+                conn,
+                telegram_user_id=telegram_user_id,
+                reminder_daily_max=value,
+                now_iso=now_iso,
+            )
+            if not updated:
+                await update.message.reply_text("⚠️ Please run /start first.")
+                return
+            conn.commit()
+            await update.message.reply_text(
+                f"✅ Updated daily reminder count to {value}. Use /remind to check."
+            )
+            return
+
+        if action == "time":
+            if len(context.args) != 2:
+                await update.message.reply_text("Usage: /remind time <hour>")
+                return
+            try:
+                value = int(context.args[1])
+            except ValueError:
+                await update.message.reply_text("⚠️ Reminder hour must be a number.")
+                return
+            if value < 0 or value > 23:
+                await update.message.reply_text(
+                    "⚠️ Reminder hour must be between 0 and 23."
+                )
+                return
+            updated = set_user_reminder_hour_local(
+                conn,
+                telegram_user_id=telegram_user_id,
+                reminder_hour_local=value,
+                now_iso=now_iso,
+            )
+            if not updated:
+                await update.message.reply_text("⚠️ Please run /start first.")
+                return
+            conn.commit()
+            await update.message.reply_text(
+                f"✅ Updated reminder hour to {value:02d}:00. Use /remind to check."
+            )
+            return
+
+        if action == "last":
+            if len(context.args) != 1:
+                await update.message.reply_text("Usage: /remind last")
+                return
+            batch = list_last_reminded_batch_for_user(conn, user_id=user_id)
+            if not batch:
+                await update.message.reply_text("📭 No reminder batch has been sent yet.")
+                return
+            await _reply_long_text(update, _render_last_batch(batch, user_timezone))
+            return
+
+        if action == "new":
+            if len(context.args) != 1:
+                await update.message.reply_text("Usage: /remind new")
+                return
+            rows = list_pending_review_candidates_for_user(
+                conn, user_id=user_id, now_iso=now_iso
+            )
+            selected = select_candidates_for_batch(
+                [row_to_candidate(row) for row in rows],
+                now_iso=now_iso,
+                daily_max=custom_count or cfg.reminder_daily_max,
+            )
+            if not selected:
+                await update.message.reply_text(
+                    "✅ No extra reminder candidate is due right now."
+                )
+                return
+            candidate = selected[0]
+            marked = mark_review_reminded(
+                conn, review_id=candidate.review_id, reminded_at=now_iso
+            )
+            if marked:
+                conn.commit()
+            await _reply_long_text(
+                update, "🔁 Manual Reminder\n\n" + build_reminder_message(candidate)
+            )
+            return
+
+    await update.message.reply_text(_remind_usage_text())
 
 
-async def reminder_count_command(
+async def reminder_count_alias_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    cfg = await _ensure_authorized(update, context)
-    if cfg is None:
-        return
-    _interrupt_quiz_if_needed(cfg, update, context)
-    if len(context.args) != 1:
-        await update.message.reply_text("Usage: /reminder_count <n>")
-        return
-    try:
-        value = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("⚠️ Reminder count must be a number.")
-        return
-    if value < 1 or value > 10:
-        await update.message.reply_text(
-            "⚠️ Reminder count must be between 1 and 10."
-        )
-        return
-    now_iso = datetime.now(UTC).isoformat()
-    with get_connection(cfg.db_path) as conn:
-        updated = set_user_reminder_daily_max(
-            conn,
-            telegram_user_id=_telegram_user_id(update),
-            reminder_daily_max=value,
-            now_iso=now_iso,
-        )
-        if updated:
-            conn.commit()
-    if not updated:
-        await update.message.reply_text("⚠️ Please run /start first.")
-        return
-    await update.message.reply_text(
-        f"✅ Updated daily reminder count to {value}. Use /reminder to check."
-    )
+    context.args = ["count", *context.args]
+    await remind_command(update, context)
 
 
 async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1402,9 +1551,9 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(log_flow)
     app.add_handler(CommandHandler("due", due_command))
-    app.add_handler(CommandHandler("reminder", reminder_command))
+    app.add_handler(CommandHandler(["remind", "reminder"], remind_command))
     app.add_handler(
-        CommandHandler(["reminder_count", "remindercount"], reminder_count_command)
+        CommandHandler(["reminder_count", "remindercount"], reminder_count_alias_command)
     )
     app.add_handler(CommandHandler("done", done_command))
     app.add_handler(CommandHandler("search", search_command))

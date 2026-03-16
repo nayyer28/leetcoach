@@ -49,7 +49,7 @@ def get_user_reminder_preferences(
 ) -> sqlite3.Row | None:
     return conn.execute(
         """
-        SELECT id, timezone, reminder_daily_max
+        SELECT id, timezone, reminder_daily_max, reminder_hour_local
         FROM users
         WHERE telegram_user_id = ?
         """,
@@ -71,5 +71,23 @@ def set_user_reminder_daily_max(
         WHERE telegram_user_id = ?
         """,
         (reminder_daily_max, now_iso, telegram_user_id),
+    )
+    return cur.rowcount > 0
+
+
+def set_user_reminder_hour_local(
+    conn: sqlite3.Connection,
+    *,
+    telegram_user_id: str,
+    reminder_hour_local: int,
+    now_iso: str,
+) -> bool:
+    cur = conn.execute(
+        """
+        UPDATE users
+        SET reminder_hour_local = ?, updated_at = ?
+        WHERE telegram_user_id = ?
+        """,
+        (reminder_hour_local, now_iso, telegram_user_id),
     )
     return cur.rowcount > 0
