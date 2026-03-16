@@ -52,6 +52,7 @@ from leetcoach.services.quiz_service import (
     AnswerQuizResult,
     QuizQuestionPayload,
     answer_quiz,
+    interrupt_active_quiz,
     is_known_quiz_topic,
     reveal_quiz,
     start_quiz,
@@ -250,6 +251,36 @@ def _commands_help_text() -> str:
     )
 
 
+def _unknown_text_help_text() -> str:
+    return (
+        "🤔 I didn’t understand that.\n\n"
+        "Try one of these commands:\n"
+        "• /help\n"
+        "• /log\n"
+        "• /due\n"
+        "• /list\n"
+        "• /search <text>\n"
+        "• /pattern <name>\n"
+        "• /show <token>\n"
+        "• /quiz [topic]\n"
+        "• /reveal"
+    )
+
+
+def _clear_quiz_prompt_state(context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data.pop("quiz_unknown_topic", None)
+
+
+def _interrupt_quiz_if_needed(
+    cfg: AppConfig, update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    interrupt_active_quiz(
+        db_path=cfg.db_path,
+        telegram_user_id=_telegram_user_id(update),
+    )
+    _clear_quiz_prompt_state(context)
+
+
 def _log_prompt(step: int, total: int, text: str) -> str:
     return f"🧩 [{step}/{total}] {text}\nSend /cancel to stop."
 
@@ -388,6 +419,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return
+    _interrupt_quiz_if_needed(cfg, update, context)
     await update.message.reply_text(
         "👋 Hey, I’m leetcoach — Saahil Nayyer’s interview prep bot.\n"
         "I’m currently for personal use only.\n"
@@ -410,6 +442,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return
+    _interrupt_quiz_if_needed(cfg, update, context)
     await update.message.reply_text(_commands_help_text(), parse_mode=ParseMode.HTML)
 
 
@@ -421,6 +454,7 @@ async def log_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return ConversationHandler.END
+    _interrupt_quiz_if_needed(cfg, update, context)
     await update.message.reply_text(
         _log_prompt(1, 10, "Enter problem title:"),
         reply_markup=ReplyKeyboardRemove(),
@@ -711,6 +745,7 @@ async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return
+    _interrupt_quiz_if_needed(cfg, update, context)
     token_store: DueTokenStore = context.application.bot_data["due_tokens"]
     telegram_user_id = _telegram_user_id(update)
     items = list_due_reviews(cfg.db_path, telegram_user_id)
@@ -730,6 +765,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return
+    _interrupt_quiz_if_needed(cfg, update, context)
     token_store: DueTokenStore = context.application.bot_data["due_tokens"]
     telegram_user_id = _telegram_user_id(update)
     if len(context.args) < 2:
@@ -876,6 +912,9 @@ async def reveal_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if result.status == "user_not_registered":
         await update.message.reply_text("⚠️ Please run /start first.")
         return
+    if result.status == "expired_quiz":
+        await update.message.reply_text("⌛ This quiz expired. Run /quiz again.")
+        return
     if result.status == "no_active_quiz" or result.question is None:
         await update.message.reply_text("⚠️ No active quiz. Run /quiz first.")
         return
@@ -1012,6 +1051,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return
+    _interrupt_quiz_if_needed(cfg, update, context)
     telegram_user_id = _telegram_user_id(update)
     if not context.args:
         await update.message.reply_text("Usage: /search <query>")
@@ -1029,6 +1069,7 @@ async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return
+    _interrupt_quiz_if_needed(cfg, update, context)
     telegram_user_id = _telegram_user_id(update)
     if not context.args:
         await update.message.reply_text("Usage: /pattern <pattern>")
@@ -1046,6 +1087,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return
+    _interrupt_quiz_if_needed(cfg, update, context)
     telegram_user_id = _telegram_user_id(update)
     rows = list_all_problems(cfg.db_path, telegram_user_id)
     if not rows:
@@ -1059,6 +1101,7 @@ async def show_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return
+    _interrupt_quiz_if_needed(cfg, update, context)
     telegram_user_id = _telegram_user_id(update)
     if not context.args:
         await update.message.reply_text("Usage: /show <token>")
@@ -1145,6 +1188,9 @@ async def default_text_command(update: Update, context: ContextTypes.DEFAULT_TYP
         if answer_result.status == "ok":
             await update.message.reply_text(_render_quiz_feedback(answer_result))
             return
+        if answer_result.status == "expired_quiz":
+            await update.message.reply_text("⌛ This quiz expired. Run /quiz again.")
+            return
         if answer_result.status == "invalid_answer":
             await update.message.reply_text(
                 "⚠️ Please answer with A, B, C, or D. "
@@ -1154,7 +1200,7 @@ async def default_text_command(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
 
-    await update.message.reply_text("👋 I’m here. Try /help to see available commands.")
+    await update.message.reply_text(_unknown_text_help_text())
 
 
 async def app_error_handler(_: object, context: ContextTypes.DEFAULT_TYPE) -> None:
