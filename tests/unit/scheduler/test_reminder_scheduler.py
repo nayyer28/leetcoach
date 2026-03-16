@@ -31,6 +31,7 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
             neetcode_slug="x",
             telegram_chat_id="chat-1",
             timezone="Europe/Berlin",
+            reminder_daily_max=None,
         )
         self.assertTrue(should_send_today(candidate, "2026-03-08T12:00:00+00:00"))
 
@@ -48,6 +49,7 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
             neetcode_slug="x",
             telegram_chat_id="chat-1",
             timezone="Europe/Berlin",
+            reminder_daily_max=None,
         )
         self.assertFalse(should_send_today(candidate, "2026-03-08T20:00:00+00:00"))
 
@@ -65,6 +67,7 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
             neetcode_slug="lru-cache",
             telegram_chat_id="chat-1",
             timezone="UTC",
+            reminder_daily_max=None,
         )
         text = build_reminder_message(candidate)
         self.assertIn("LeetCoach Reminder", text)
@@ -86,6 +89,7 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
             neetcode_slug="x",
             telegram_chat_id="chat-1",
             timezone="Pacific/Kiritimati",
+            reminder_daily_max=None,
         )
         self.assertTrue(should_send_today(candidate, "2026-03-09T10:15:00+00:00"))
 
@@ -104,6 +108,7 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
                 neetcode_slug="a",
                 telegram_chat_id="chat-1",
                 timezone="UTC",
+                reminder_daily_max=None,
             ),
             ReminderCandidate(
                 review_id=2,
@@ -118,6 +123,7 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
                 neetcode_slug="b",
                 telegram_chat_id="chat-1",
                 timezone="UTC",
+                reminder_daily_max=None,
             ),
         ]
         self.assertTrue(

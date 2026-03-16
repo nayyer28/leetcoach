@@ -70,7 +70,7 @@ Command contract lives in:
 
 Current commands:
 - `/start`, `/register`, `/help`
-- `/log`, `/due`, `/done <token> <7th|21st>`
+- `/log`, `/due`, `/done <token> <7th|21st>`, `/reminder`, `/reminder-count <n>`
 - `/search <query>`, `/list`, `/pattern <pattern-substring>`, `/show <token>`
 - `/quiz [topic]`, `/reveal`
 
@@ -129,6 +129,11 @@ This checks:
 - `LEETCOACH_REMINDER_DAILY_MAX`
 - presence of Telegram bot token
 - required DB tables for scheduler execution
+
+Reminder settings:
+- `LEETCOACH_REMINDER_DAILY_MAX` is the app-wide default
+- `/reminder` shows your current effective daily reminder count
+- `/reminder-count <n>` sets your personal daily reminder count (`1` to `10`)
 
 Run one scheduler tick manually:
 

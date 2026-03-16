@@ -34,6 +34,7 @@ class ReminderCandidate:
     neetcode_slug: str | None
     telegram_chat_id: str
     timezone: str
+    reminder_daily_max: int | None
 
 
 @dataclass(frozen=True)
@@ -240,6 +241,11 @@ def run_scheduler_once(
                 neetcode_slug=(str(r["neetcode_slug"]) if r["neetcode_slug"] else None),
                 telegram_chat_id=str(r["telegram_chat_id"]),
                 timezone=str(r["timezone"]),
+                reminder_daily_max=(
+                    int(r["reminder_daily_max"])
+                    if r["reminder_daily_max"] is not None
+                    else None
+                ),
             )
             for r in rows
         ]
@@ -252,11 +258,13 @@ def run_scheduler_once(
         selected_total = 0
         header_sent = 0
 
-        by_chat: dict[tuple[str, str], list[ReminderCandidate]] = {}
+        by_chat: dict[tuple[str, str, int | None], list[ReminderCandidate]] = {}
         for c in candidates:
-            by_chat.setdefault((c.telegram_chat_id, c.timezone), []).append(c)
+            by_chat.setdefault(
+                (c.telegram_chat_id, c.timezone, c.reminder_daily_max), []
+            ).append(c)
 
-        for (chat_id, timezone), group in by_chat.items():
+        for (chat_id, timezone, reminder_daily_max), group in by_chat.items():
             if not _is_send_hour(timezone, now, config.reminder_hour_local):
                 skipped_hour += len(group)
                 continue
@@ -289,13 +297,15 @@ def run_scheduler_once(
                 key=lambda item: _parse_iso(item.due_at),
             )
 
+            effective_daily_max = reminder_daily_max or config.reminder_daily_max
+
             selected: list[ReminderCandidate] = []
             if pending:
                 selected.append(pending[0])
-            if overdue and len(selected) < config.reminder_daily_max:
+            if overdue and len(selected) < effective_daily_max:
                 selected.append(overdue[0])
             for c in pending[1:] + overdue[1:]:
-                if len(selected) >= config.reminder_daily_max:
+                if len(selected) >= effective_daily_max:
                     break
                 selected.append(c)
 
@@ -309,6 +319,7 @@ def run_scheduler_once(
                     {
                         "chat_id": chat_id,
                         "timezone": timezone,
+                        "reminder_daily_max": effective_daily_max,
                         "group_size": len(group),
                         "due_and_unsent": len(due_and_unsent),
                         "selected": len(selected),

@@ -23,7 +23,7 @@ Completed:
 - software design document
 - CLI command via entrypoint: `lch` (`run`, `migrate`, `test`, `bot`, `doctor`, `import-notion`)
 - schema migrations and DB layer
-- Telegram commands: `/start`, `/register`, `/help`, guided `/log`, `/due`, `/done <token> <7th|21st>`, `/search`, `/list`, `/pattern`, `/quiz [topic]`, `/reveal`
+- Telegram commands: `/start`, `/register`, `/help`, guided `/log`, `/due`, `/done <token> <7th|21st>`, `/reminder`, `/reminder-count <n>`, `/search`, `/list`, `/pattern`, `/quiz [topic]`, `/reveal`
 - container runtime baseline (`Dockerfile`, `docker-compose.yml`)
 - Notion import command and parsing pipeline
 - CI workflow for advisory unit/integration test runs on PRs

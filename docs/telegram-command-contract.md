@@ -127,6 +127,38 @@ Success response:
 No data response:
 - `No pending/overdue reviews.`
 
+## `/reminder`
+
+Purpose:
+- show the effective reminder settings for the current user
+
+Input:
+- no arguments
+
+Behavior:
+- shows:
+  - daily reminder count
+  - reminder hour
+  - whether the count comes from the app default or a user override
+
+## `/reminder-count <n>`
+
+Purpose:
+- override the current user’s daily reminder count
+
+Input:
+- integer `n`
+
+Behavior:
+- accepts values from `1` to `10`
+- stores a user-specific daily reminder count
+- takes effect on future scheduler runs without redeploy
+
+Error responses:
+- missing argument -> usage hint
+- non-numeric argument -> validation error
+- out of range -> validation error
+
 ## Outbound Reminder Messages (Scheduler)
 
 Source:
@@ -136,7 +168,7 @@ Behavior:
 - sends reminders for due checkpoints (`due_at <= now`) with priority balancing:
   - pending checkpoints first
   - then overdue backlog (oldest first)
-- daily max reminder picks are controlled by `LEETCOACH_REMINDER_DAILY_MAX` (default `2`)
+- daily max reminder picks use user override when present, otherwise `LEETCOACH_REMINDER_DAILY_MAX` (default `2`)
 - sends only at local hour `LEETCOACH_REMINDER_HOUR_LOCAL` (default `8`)
 - de-duplicates by local user day using `last_reminded_at`
 - sends a header message first so subsequent messages are clearly marked as reminder picks
