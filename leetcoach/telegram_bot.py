@@ -244,7 +244,7 @@ def _commands_help_text() -> str:
         "• /due\n"
         "• /done A1 7th\n\n"
         "• /reminder\n"
-        "• /reminder-count &lt;n&gt;\n\n"
+        "• /reminder_count &lt;n&gt;\n\n"
         "📚 <b>Browse</b>\n"
         "• /list\n"
         "• /pattern &lt;text&gt;\n"
@@ -840,7 +840,7 @@ async def reminder_count_command(
         return
     _interrupt_quiz_if_needed(cfg, update, context)
     if len(context.args) != 1:
-        await update.message.reply_text("Usage: /reminder-count <n>")
+        await update.message.reply_text("Usage: /reminder_count <n>")
         return
     try:
         value = int(context.args[0])
@@ -1403,7 +1403,9 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(log_flow)
     app.add_handler(CommandHandler("due", due_command))
     app.add_handler(CommandHandler("reminder", reminder_command))
-    app.add_handler(CommandHandler("reminder-count", reminder_count_command))
+    app.add_handler(
+        CommandHandler(["reminder_count", "remindercount"], reminder_count_command)
+    )
     app.add_handler(CommandHandler("done", done_command))
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("pattern", pattern_command))
