@@ -5,6 +5,7 @@ LeetCode prep assistant focused on logging solved problems, scheduling review re
 ## Project Docs
 
 - usage guide (setup, CLI, DB, troubleshooting): [`docs/usage.md`](docs/usage.md)
+- Fedora self-hosted deployment guide: [`docs/deploy-fedora-runner.md`](docs/deploy-fedora-runner.md)
 - Telegram command contract: [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
 - v1 data model and behavior specification: [`docs/v1-spec.md`](docs/v1-spec.md)
 - v2 LLM quiz specification: [`docs/v2-spec.md`](docs/v2-spec.md)
