@@ -30,7 +30,12 @@ from telegram.ext import (
 )
 
 from leetcoach.config import AppConfig
-from leetcoach.dao.users_dao import get_user_id_by_telegram_user_id, upsert_user
+from leetcoach.dao.users_dao import (
+    get_user_id_by_telegram_user_id,
+    get_user_reminder_preferences,
+    set_user_reminder_daily_max,
+    upsert_user,
+)
 from leetcoach.db.connection import get_connection
 from leetcoach.llm.gemini_provider import (
     DEFAULT_GEMINI_MODEL_PRIORITY,
@@ -238,6 +243,8 @@ def _commands_help_text() -> str:
         "⏰ <b>Review</b>\n"
         "• /due\n"
         "• /done A1 7th\n\n"
+        "• /reminder\n"
+        "• /reminder-count &lt;n&gt;\n\n"
         "📚 <b>Browse</b>\n"
         "• /list\n"
         "• /pattern &lt;text&gt;\n"
@@ -258,6 +265,7 @@ def _unknown_text_help_text() -> str:
         "• /help\n"
         "• /log\n"
         "• /due\n"
+        "• /reminder\n"
         "• /list\n"
         "• /search <text>\n"
         "• /pattern <name>\n"
@@ -274,6 +282,7 @@ def _unknown_command_help_text(command_text: str) -> str:
         "• /help\n"
         "• /log\n"
         "• /due\n"
+        "• /reminder\n"
         "• /list\n"
         "• /search <text>\n"
         "• /pattern <name>\n"
@@ -791,6 +800,74 @@ async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         telegram_user_id, [entry.user_problem_id for entry in entries]
     )
     await _reply_long_text(update, _render_due(entries, token_map, cfg.timezone))
+
+
+async def reminder_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
+    _interrupt_quiz_if_needed(cfg, update, context)
+    with get_connection(cfg.db_path) as conn:
+        row = get_user_reminder_preferences(
+            conn, telegram_user_id=_telegram_user_id(update)
+        )
+    if row is None:
+        await update.message.reply_text("⚠️ Please run /start first.")
+        return
+    custom = (
+        int(row["reminder_daily_max"])
+        if row["reminder_daily_max"] is not None
+        else None
+    )
+    effective = custom or cfg.reminder_daily_max
+    lines = [
+        "⏰ Reminder Settings",
+        f"Daily reminder count: {effective}",
+        f"Reminder hour: {cfg.reminder_hour_local}:00",
+    ]
+    if custom is None:
+        lines.append("Source: app default")
+    else:
+        lines.append("Source: your custom setting")
+    await update.message.reply_text("\n".join(lines))
+
+
+async def reminder_count_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
+    _interrupt_quiz_if_needed(cfg, update, context)
+    if len(context.args) != 1:
+        await update.message.reply_text("Usage: /reminder-count <n>")
+        return
+    try:
+        value = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("⚠️ Reminder count must be a number.")
+        return
+    if value < 1 or value > 10:
+        await update.message.reply_text(
+            "⚠️ Reminder count must be between 1 and 10."
+        )
+        return
+    now_iso = datetime.now(UTC).isoformat()
+    with get_connection(cfg.db_path) as conn:
+        updated = set_user_reminder_daily_max(
+            conn,
+            telegram_user_id=_telegram_user_id(update),
+            reminder_daily_max=value,
+            now_iso=now_iso,
+        )
+        if updated:
+            conn.commit()
+    if not updated:
+        await update.message.reply_text("⚠️ Please run /start first.")
+        return
+    await update.message.reply_text(
+        f"✅ Updated daily reminder count to {value}. Use /reminder to check."
+    )
 
 
 async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1325,6 +1402,8 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(log_flow)
     app.add_handler(CommandHandler("due", due_command))
+    app.add_handler(CommandHandler("reminder", reminder_command))
+    app.add_handler(CommandHandler("reminder-count", reminder_count_command))
     app.add_handler(CommandHandler("done", done_command))
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("pattern", pattern_command))

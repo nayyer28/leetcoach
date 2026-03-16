@@ -42,3 +42,34 @@ def get_user_id_by_telegram_user_id(
     if row is None:
         return None
     return int(row["id"])
+
+
+def get_user_reminder_preferences(
+    conn: sqlite3.Connection, *, telegram_user_id: str
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT id, timezone, reminder_daily_max
+        FROM users
+        WHERE telegram_user_id = ?
+        """,
+        (telegram_user_id,),
+    ).fetchone()
+
+
+def set_user_reminder_daily_max(
+    conn: sqlite3.Connection,
+    *,
+    telegram_user_id: str,
+    reminder_daily_max: int,
+    now_iso: str,
+) -> bool:
+    cur = conn.execute(
+        """
+        UPDATE users
+        SET reminder_daily_max = ?, updated_at = ?
+        WHERE telegram_user_id = ?
+        """,
+        (reminder_daily_max, now_iso, telegram_user_id),
+    )
+    return cur.rowcount > 0

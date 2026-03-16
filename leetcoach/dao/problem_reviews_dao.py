@@ -89,7 +89,8 @@ def list_pending_review_candidates(
             p.leetcode_slug,
             p.neetcode_slug,
             u.telegram_chat_id,
-            u.timezone
+            u.timezone,
+            u.reminder_daily_max
         FROM problem_reviews pr
         JOIN user_problems up ON up.id = pr.user_problem_id
         JOIN problems p ON p.id = up.problem_id

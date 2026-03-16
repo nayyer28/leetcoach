@@ -26,9 +26,13 @@ class MigrateUnitTest(unittest.TestCase):
                         "SELECT version FROM schema_migrations ORDER BY version"
                     ).fetchall()
                 ]
+                user_columns = [
+                    row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()
+                ]
 
             expected = [path.name for path in sorted(MIGRATIONS_DIR.glob("*.sql"))]
             self.assertEqual(versions, expected)
+            self.assertIn("reminder_daily_max", user_columns)
 
 
 if __name__ == "__main__":
