@@ -10,9 +10,10 @@ from urllib import error, parse, request
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from leetcoach.config import AppConfig
-from leetcoach.dao.problem_reviews_dao import (
-    list_pending_review_candidates,
-    mark_review_reminded,
+from leetcoach.dao.review_queue_dao import (
+    get_last_review_requested_at_for_user,
+    list_next_review_candidates_for_scheduler,
+    mark_review_requested,
 )
 from leetcoach.db.connection import get_connection
 
@@ -22,12 +23,12 @@ LOGGER = logging.getLogger("leetcoach.scheduler")
 
 @dataclass(frozen=True)
 class ReminderCandidate:
-    review_id: int
     user_problem_id: int
-    review_day: int
-    due_at: str
-    buffer_until: str
-    last_reminded_at: str | None
+    user_id: int
+    queue_position: int
+    last_review_requested_at: str | None
+    last_reviewed_at: str | None
+    review_count: int
     solved_at: str
     title: str
     leetcode_slug: str | None
@@ -75,9 +76,9 @@ def _local_date(iso_ts: str, timezone_name: str) -> date:
 
 
 def should_send_today(candidate: ReminderCandidate, now_iso: str) -> bool:
-    if not candidate.last_reminded_at:
+    if not candidate.last_review_requested_at:
         return True
-    return _local_date(candidate.last_reminded_at, candidate.timezone) < _local_date(
+    return _local_date(candidate.last_review_requested_at, candidate.timezone) < _local_date(
         now_iso, candidate.timezone
     )
 
@@ -87,9 +88,19 @@ def was_group_reminded_today(
 ) -> bool:
     today = _local_date(now_iso, timezone_name)
     return any(
-        candidate.last_reminded_at
-        and _local_date(candidate.last_reminded_at, timezone_name) == today
+        candidate.last_review_requested_at
+        and _local_date(candidate.last_review_requested_at, timezone_name) == today
         for candidate in candidates
+    )
+
+
+def was_user_reminded_today(
+    *, last_requested_at: str | None, now_iso: str, timezone_name: str
+) -> bool:
+    if not last_requested_at:
+        return False
+    return _local_date(last_requested_at, timezone_name) == _local_date(
+        now_iso, timezone_name
     )
 
 
@@ -117,22 +128,24 @@ def _neetcode_url(neetcode_slug: str | None) -> str | None:
 
 
 def build_reminder_message(candidate: ReminderCandidate) -> str:
-    day_label = "7th" if candidate.review_day == 7 else "21st"
     lines = [
         "⏰ LeetCoach Reminder",
         f"Problem: {candidate.title}",
-        f"Checkpoint: Day {candidate.review_day} ({day_label})",
         f"First attempt: {_format_compact(candidate.solved_at, candidate.timezone)}",
-        f"Due: {_format_compact(candidate.due_at, candidate.timezone)}",
-        f"Grace until: {_format_compact(candidate.buffer_until, candidate.timezone)}",
+        f"Reviews completed: {candidate.review_count}",
+        f"Queue position: {candidate.queue_position}",
     ]
+    if candidate.last_reviewed_at:
+        lines.append(
+            f"Last reviewed: {_format_compact(candidate.last_reviewed_at, candidate.timezone)}"
+        )
     lc = _leetcode_url(candidate.leetcode_slug)
     if lc:
         lines.append(f"🔗 LC: {lc}")
     nc = _neetcode_url(candidate.neetcode_slug)
     if nc:
         lines.append(f"🔗 NC: {nc}")
-    lines.append("Use /due, then /done <token> " + day_label)
+    lines.append("Use /due, then /reviewed <token>")
     return "\n".join(lines)
 
 
@@ -145,12 +158,18 @@ def build_daily_header_message() -> str:
 
 def row_to_candidate(row: sqlite3.Row) -> ReminderCandidate:
     return ReminderCandidate(
-        review_id=int(row["review_id"]),
         user_problem_id=int(row["user_problem_id"]),
-        review_day=int(row["review_day"]),
-        due_at=str(row["due_at"]),
-        buffer_until=str(row["buffer_until"]),
-        last_reminded_at=(str(row["last_reminded_at"]) if row["last_reminded_at"] else None),
+        user_id=int(row["user_id"]) if row["user_id"] is not None else 0,
+        queue_position=int(row["queue_position"]),
+        last_review_requested_at=(
+            str(row["last_review_requested_at"])
+            if row["last_review_requested_at"]
+            else None
+        ),
+        last_reviewed_at=(
+            str(row["last_reviewed_at"]) if row["last_reviewed_at"] else None
+        ),
+        review_count=int(row["review_count"]),
         solved_at=str(row["solved_at"]),
         title=str(row["title"]),
         leetcode_slug=(str(row["leetcode_slug"]) if row["leetcode_slug"] else None),
@@ -171,37 +190,9 @@ def row_to_candidate(row: sqlite3.Row) -> ReminderCandidate:
 def select_candidates_for_batch(
     candidates: list[ReminderCandidate], *, now_iso: str, daily_max: int
 ) -> list[ReminderCandidate]:
-    due_and_unsent = [c for c in candidates if should_send_today(c, now_iso)]
-    if not due_and_unsent:
-        return []
-
-    unique_by_problem: dict[int, ReminderCandidate] = {}
-    for candidate in sorted(due_and_unsent, key=lambda item: datetime.fromisoformat(item.due_at)):
-        unique_by_problem.setdefault(candidate.user_problem_id, candidate)
-    unique = list(unique_by_problem.values())
-
-    def _is_pending(candidate: ReminderCandidate) -> bool:
-        return _parse_iso(now_iso) <= _parse_iso(candidate.buffer_until)
-
-    pending = sorted(
-        [candidate for candidate in unique if _is_pending(candidate)],
-        key=lambda item: _parse_iso(item.due_at),
-    )
-    overdue = sorted(
-        [candidate for candidate in unique if not _is_pending(candidate)],
-        key=lambda item: _parse_iso(item.due_at),
-    )
-
-    selected: list[ReminderCandidate] = []
-    if pending:
-        selected.append(pending[0])
-    if overdue and len(selected) < daily_max:
-        selected.append(overdue[0])
-    for candidate in pending[1:] + overdue[1:]:
-        if len(selected) >= daily_max:
-            break
-        selected.append(candidate)
-    return selected
+    eligible = [candidate for candidate in candidates if should_send_today(candidate, now_iso)]
+    eligible.sort(key=lambda item: item.queue_position)
+    return eligible[:daily_max]
 
 
 def _required_tables_exist(conn: sqlite3.Connection) -> tuple[bool, tuple[str, ...]]:
@@ -210,7 +201,6 @@ def _required_tables_exist(conn: sqlite3.Connection) -> tuple[bool, tuple[str, .
         "users",
         "problems",
         "user_problems",
-        "problem_reviews",
     }
     rows = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
@@ -286,7 +276,7 @@ def run_scheduler_once(
 
     now = now_iso or datetime.now(UTC).isoformat()
     with get_connection(config.db_path) as conn:
-        rows = list_pending_review_candidates(conn, now_iso=now)
+        rows = list_next_review_candidates_for_scheduler(conn)
         candidates = [row_to_candidate(r) for r in rows]
 
         sent = 0
@@ -297,10 +287,11 @@ def run_scheduler_once(
         selected_total = 0
         header_sent = 0
 
-        by_chat: dict[tuple[str, str, int | None, int | None], list[ReminderCandidate]] = {}
+        by_chat: dict[tuple[int, str, str, int | None, int | None], list[ReminderCandidate]] = {}
         for c in candidates:
             by_chat.setdefault(
                 (
+                    c.user_id,
                     c.telegram_chat_id,
                     c.timezone,
                     c.reminder_daily_max,
@@ -309,7 +300,7 @@ def run_scheduler_once(
                 [],
             ).append(c)
 
-        for (chat_id, timezone, reminder_daily_max, reminder_hour_local), group in by_chat.items():
+        for (user_id, chat_id, timezone, reminder_daily_max, reminder_hour_local), group in by_chat.items():
             effective_reminder_hour = (
                 reminder_hour_local
                 if reminder_hour_local is not None
@@ -319,14 +310,21 @@ def run_scheduler_once(
                 skipped_hour += len(group)
                 continue
 
-            if was_group_reminded_today(group, now, timezone):
+            last_requested_at = get_last_review_requested_at_for_user(
+                conn, user_id=user_id
+            )
+            if was_user_reminded_today(
+                last_requested_at=last_requested_at,
+                now_iso=now,
+                timezone_name=timezone,
+            ):
                 skipped += len(group)
                 continue
 
-            due_and_unsent = [c for c in group if should_send_today(c, now)]
-            due_and_unsent_total += len(due_and_unsent)
-            skipped += len(group) - len(due_and_unsent)
-            if not due_and_unsent:
+            selectable = [c for c in group if should_send_today(c, now)]
+            due_and_unsent_total += len(selectable)
+            skipped += len(group) - len(selectable)
+            if not selectable:
                 continue
 
             effective_daily_max = reminder_daily_max or config.reminder_daily_max
@@ -347,14 +345,8 @@ def run_scheduler_once(
                         "reminder_daily_max": effective_daily_max,
                         "reminder_hour_local": effective_reminder_hour,
                         "group_size": len(group),
-                        "due_and_unsent": len(due_and_unsent),
+                        "due_and_unsent": len(selectable),
                         "selected": len(selected),
-                        "pending_selected": sum(
-                            1 for c in selected if _parse_iso(now) <= _parse_iso(c.buffer_until)
-                        ),
-                        "overdue_selected": sum(
-                            1 for c in selected if _parse_iso(now) > _parse_iso(c.buffer_until)
-                        ),
                     },
                     sort_keys=True,
                 ),
@@ -381,21 +373,24 @@ def run_scheduler_once(
                 if not ok:
                     failed += 1
                     LOGGER.error(
-                        "Reminder send failed (review_id=%s, chat_id=%s): %s",
-                        candidate.review_id,
+                        "Reminder send failed (user_problem_id=%s, chat_id=%s): %s",
+                        candidate.user_problem_id,
                         candidate.telegram_chat_id,
                         detail,
                     )
                     continue
 
-                marked = mark_review_reminded(
-                    conn, review_id=candidate.review_id, reminded_at=now
+                marked = mark_review_requested(
+                    conn,
+                    user_id=candidate.user_id,
+                    user_problem_id=candidate.user_problem_id,
+                    requested_at=now,
                 )
                 if marked:
                     sent += 1
                     if progress:
                         progress(
-                            f"[scheduler] sent review_id={candidate.review_id} day={candidate.review_day}"
+                            f"[scheduler] sent user_problem_id={candidate.user_problem_id}"
                         )
                 else:
                     failed += 1

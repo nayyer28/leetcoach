@@ -26,7 +26,7 @@ No layer skips downward boundaries.
 - primary entrypoint: `lch` (`project.scripts` -> `leetcoach.cli:cli`)
 - compatibility entrypoint: `python main.py` (wrapper that calls same CLI)
 - current CLI commands: `run`, `migrate`, `test`, `bot`, `scheduler`, `doctor`, `import-notion`
-- Telegram handlers: `/start`, `/register`, `/help`, `/log`, `/due`, `/done <token> <7th|21st>`, `/search`, `/list`, `/pattern`
+- Telegram handlers: `/start`, `/register`, `/help`, `/log`, `/due`, `/reviewed <token>`, `/search`, `/list`, `/pattern`, `/remind ...`
 
 ### Service Layer
 - implements use-cases (for example: log problem)

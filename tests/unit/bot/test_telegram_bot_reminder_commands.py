@@ -171,7 +171,7 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
             )
             with get_connection(db_path) as conn:
                 conn.execute(
-                    "UPDATE problem_reviews SET last_reminded_at = ?, updated_at = ?",
+                    "UPDATE user_problems SET last_review_requested_at = ?, updated_at = ?",
                     ("2026-03-16T09:00:00+00:00", "2026-03-16T09:00:00+00:00"),
                 )
                 conn.commit()
@@ -215,9 +215,9 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Two Sum", text)
             with get_connection(db_path) as conn:
                 row = conn.execute(
-                    "SELECT last_reminded_at FROM problem_reviews WHERE review_day = 7"
+                    "SELECT last_review_requested_at FROM user_problems"
                 ).fetchone()
-                self.assertIsNotNone(row["last_reminded_at"])
+                self.assertIsNotNone(row["last_review_requested_at"])
 
 
 if __name__ == "__main__":

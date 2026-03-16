@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from leetcoach.config import AppConfig
-from leetcoach.dao.problem_reviews_dao import list_pending_review_candidates
+from leetcoach.dao.review_queue_dao import list_next_review_candidates_for_scheduler
 from leetcoach.db.connection import get_connection
 from leetcoach.db.migrate import migrate_database
 from leetcoach.services.log_problem_service import LogProblemInput, log_problem
@@ -15,7 +15,7 @@ from leetcoach.reminder_scheduler import run_scheduler_once
 
 class ReminderSchedulerIntegrationTest(unittest.TestCase):
     @patch("leetcoach.reminder_scheduler._send_telegram_message")
-    def test_run_once_sets_last_reminded_and_skips_same_day(self, mock_send) -> None:
+    def test_run_once_sets_last_requested_and_skips_same_day(self, mock_send) -> None:
         mock_send.return_value = (True, "ok")
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "leetcoach-test.db"
@@ -59,14 +59,14 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
 
             with get_connection(str(db_path)) as conn:
                 row = conn.execute(
-                    "SELECT last_reminded_at FROM problem_reviews WHERE review_day = 7"
+                    "SELECT last_review_requested_at FROM user_problems"
                 ).fetchone()
                 self.assertIsNotNone(row)
-                self.assertEqual(str(row["last_reminded_at"]), now_iso)
+                self.assertEqual(str(row["last_review_requested_at"]), now_iso)
 
             second = run_scheduler_once(config=cfg, now_iso="2026-02-10T09:30:00+00:00")
             self.assertEqual(second.sent, 0)
-            self.assertEqual(second.skipped_already_reminded_today, 1)
+            self.assertEqual(second.skipped_already_reminded_today, 0)
             self.assertEqual(mock_send.call_count, 2)
 
     @patch("leetcoach.reminder_scheduler._send_telegram_message")
@@ -146,10 +146,10 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
 
             with get_connection(str(db_path)) as conn:
                 row = conn.execute(
-                    "SELECT last_reminded_at FROM problem_reviews WHERE review_day = 7"
+                    "SELECT last_review_requested_at FROM user_problems"
                 ).fetchone()
                 self.assertIsNotNone(row)
-                self.assertIsNone(row["last_reminded_at"])
+                self.assertIsNone(row["last_review_requested_at"])
 
     @patch("leetcoach.reminder_scheduler._send_telegram_message")
     def test_run_once_sends_only_one_batch_per_chat_per_day(self, mock_send) -> None:
@@ -201,7 +201,7 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             second = run_scheduler_once(config=cfg, now_iso="2026-02-10T09:01:00+00:00")
             self.assertEqual(second.sent, 0)
             self.assertEqual(second.header_sent, 0)
-            self.assertEqual(second.skipped_already_reminded_today, 2)
+            self.assertEqual(second.skipped_already_reminded_today, 1)
             self.assertEqual(mock_send.call_count, 3)
 
     @patch("leetcoach.reminder_scheduler._send_telegram_message")
@@ -354,7 +354,7 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             self.assertEqual(stats.failed, 1)
             self.assertEqual(mock_send.call_count, 3)
 
-    def test_pending_candidates_are_due_sorted_and_exclude_expired_or_completed(self) -> None:
+    def test_queue_candidates_follow_queue_position_and_exclude_outstanding(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "leetcoach-test.db"
             migrate_database(str(db_path))
@@ -421,36 +421,21 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             )
 
             with get_connection(str(db_path)) as conn:
-                # Mark first problem's day-7 review as completed.
                 conn.execute(
                     """
-                    UPDATE problem_reviews
-                    SET completed_at = ?, updated_at = ?
-                    WHERE user_problem_id = 1 AND review_day = 7
+                    UPDATE user_problems
+                    SET last_review_requested_at = ?, updated_at = ?
+                    WHERE pattern = ?
                     """,
-                    ("2026-02-09T10:00:00+00:00", "2026-02-09T10:00:00+00:00"),
+                    ("2026-02-19T10:00:00+00:00", "2026-02-19T10:00:00+00:00", "arrays"),
                 )
                 conn.commit()
 
-                rows = list_pending_review_candidates(
-                    conn, now_iso="2026-02-19T12:00:00+00:00"
-                )
+                rows = list_next_review_candidates_for_scheduler(conn)
 
-            # We should see due+active reviews sorted by due_at asc, including overdue backlog:
-            # - Merge Two Sorted Lists day-7 (old overdue)
-            # - Merge Two Sorted Lists day-21 (old overdue)
-            # - Longest Substring day-7
-            # - Contains Duplicate day-7
-            # - Two Sum day-21 (due 2026-02-22) is not due yet and excluded
-            self.assertEqual(len(rows), 4)
-            self.assertEqual(str(rows[0]["title"]), "Merge Two Sorted Lists")
-            self.assertEqual(int(rows[0]["review_day"]), 7)
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(str(rows[0]["title"]), "Longest Substring")
             self.assertEqual(str(rows[1]["title"]), "Merge Two Sorted Lists")
-            self.assertEqual(int(rows[1]["review_day"]), 21)
-            self.assertEqual(str(rows[2]["title"]), "Longest Substring")
-            self.assertEqual(int(rows[2]["review_day"]), 7)
-            self.assertEqual(str(rows[3]["title"]), "Contains Duplicate")
-            self.assertEqual(int(rows[3]["review_day"]), 7)
 
 
 if __name__ == "__main__":

@@ -70,7 +70,7 @@ Command contract lives in:
 
 Current commands:
 - `/start`, `/register`, `/help`
-- `/log`, `/due`, `/done <token> <7th|21st>`, `/remind`
+- `/log`, `/due`, `/reviewed <token>`, `/remind`
 - `/search <query>`, `/list`, `/pattern <pattern-substring>`, `/show <token>`
 - `/quiz [topic]`, `/reveal`
 
@@ -130,14 +130,16 @@ This checks:
 - presence of Telegram bot token
 - required DB tables for scheduler execution
 
-Reminder settings:
+Reminder settings and review queue:
 - `LEETCOACH_REMINDER_DAILY_MAX` is the app-wide default
 - `LEETCOACH_REMINDER_HOUR_LOCAL` is the app-wide default reminder hour
 - `/remind` shows your current effective reminder settings
 - `/remind count <n>` sets your personal daily reminder count (`1` to `10`)
 - `/remind time <hour>` sets your personal reminder hour (`0` to `23`)
 - `/remind last` shows the most recent reminder batch sent to you
-- `/remind new` sends one additional due reminder candidate immediately
+- `/remind new` sends one additional review candidate immediately
+- `/due` shows problems that were reminded but not yet marked reviewed
+- `/reviewed <token>` marks a problem reviewed and moves it to the back of your review queue
 
 Run one scheduler tick manually:
 
@@ -220,7 +222,7 @@ sqlite3 leetcoach.volume.db "SELECT version FROM schema_migrations ORDER BY vers
 sqlite3 leetcoach.volume.db ".schema active_quiz_sessions"
 sqlite3 leetcoach.volume.db "SELECT count(*) FROM users;"
 sqlite3 leetcoach.volume.db "SELECT count(*) FROM user_problems;"
-sqlite3 leetcoach.volume.db "SELECT count(*) FROM problem_reviews;"
+sqlite3 leetcoach.volume.db "SELECT id, queue_position, review_count, last_review_requested_at, last_reviewed_at FROM user_problems ORDER BY user_id, queue_position LIMIT 20;"
 sqlite3 leetcoach.volume.db "SELECT count(*) FROM active_quiz_sessions;"
 ```
 

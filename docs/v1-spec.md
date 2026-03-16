@@ -6,8 +6,8 @@ This spec covers only:
 - log problems
 - retrieve/search problems
 - due review list
-- mark review done
-- reminder scheduling for day 7 and day 21 with 48h grace
+- mark problems reviewed
+- reminder scheduling from a circulating review queue
 
 Deferred:
 - attempts/history table
@@ -20,7 +20,6 @@ Deferred:
 erDiagram
     USERS ||--o{ USER_PROBLEMS : tracks
     PROBLEMS ||--o{ USER_PROBLEMS : references
-    USER_PROBLEMS ||--o{ PROBLEM_REVIEWS : schedules
 
     USERS {
       int id PK
@@ -47,22 +46,14 @@ erDiagram
       int problem_id FK
       text pattern
       text solved_at
+      int queue_position
+      int review_count
+      text last_review_requested_at
+      text last_reviewed_at
       text concepts
       text time_complexity
       text space_complexity
       text notes
-      text created_at
-      text updated_at
-    }
-
-    PROBLEM_REVIEWS {
-      int id PK
-      int user_problem_id FK
-      int review_day
-      text due_at
-      text buffer_until
-      text completed_at
-      text last_reminded_at
       text created_at
       text updated_at
     }
@@ -75,7 +66,6 @@ Cardinality legend for Mermaid ER syntax:
 Equivalent UML-style multiplicities:
 - `User 1 ----- 0..* UserProblem`
 - `Problem 1 ----- 0..* UserProblem`
-- `UserProblem 1 ----- 0..* ProblemReview`
 
 ## Table Definitions
 
@@ -129,6 +119,10 @@ Fields:
 - `problem_id` INTEGER NOT NULL REFERENCES `problems(id)` ON DELETE CASCADE
 - `pattern` TEXT NOT NULL
 - `solved_at` TEXT NOT NULL
+- `queue_position` INTEGER NOT NULL DEFAULT `0`
+- `review_count` INTEGER NOT NULL DEFAULT `0`
+- `last_review_requested_at` TEXT NULL
+- `last_reviewed_at` TEXT NULL
 - `concepts` TEXT NULL
 - `time_complexity` TEXT NULL
 - `space_complexity` TEXT NULL
@@ -140,64 +134,47 @@ Constraints and indexes:
 - unique index: (`user_id`, `problem_id`)
 - index: (`user_id`, `pattern`)
 - index: (`user_id`, `solved_at`)
+- index: (`user_id`, `queue_position`)
+- index: (`user_id`, `last_review_requested_at`)
 
 Notes:
 - `concepts`, `time_complexity`, `space_complexity`, and `notes` are plain `TEXT` and can store multiline markdown or plain text.
-
-### `problem_reviews`
-
-Purpose:
-- checkpoint/tick-off rows used by reminders and due tracking
-
-Fields:
-- `id` INTEGER PRIMARY KEY
-- `user_problem_id` INTEGER NOT NULL REFERENCES `user_problems(id)` ON DELETE CASCADE
-- `review_day` INTEGER NOT NULL CHECK (`review_day IN (7, 21)`)
-- `due_at` TEXT NOT NULL
-- `buffer_until` TEXT NOT NULL
-- `completed_at` TEXT NULL
-- `last_reminded_at` TEXT NULL
-- `created_at` TEXT NOT NULL
-- `updated_at` TEXT NOT NULL
-
-Constraints and indexes:
-- unique index: (`user_problem_id`, `review_day`)
-- index: (`due_at`)
-- index: (`buffer_until`)
-- index: (`completed_at`)
 
 ## Reminder and Status Rules
 
 When a problem is logged:
 - create or reuse a canonical `problems` row
 - create or update `user_problems` row for that user/problem
-- create two `problem_reviews` rows for that `user_problems` row
-  - day 7: `due_at = solved_at + 7d`, `buffer_until = due_at + 48h`
-  - day 21: `due_at = solved_at + 21d`, `buffer_until = due_at + 48h`
+- place the problem into that user's review queue if it is newly linked
+- initialize review state:
+  - `review_count = 0`
+  - `last_review_requested_at = NULL`
+  - `last_reviewed_at = NULL`
 
 Status is derived (not stored):
-- `done`: `completed_at IS NOT NULL`
-- `upcoming`: now < `due_at` and not done
-- `pending`: `due_at <= now <= buffer_until` and not done
-- `overdue`: now > `buffer_until` and not done
+- `outstanding`: `last_review_requested_at IS NOT NULL` and
+  (`last_reviewed_at IS NULL` or `last_review_requested_at > last_reviewed_at`)
+- `available`: not outstanding
+
+Queue rules:
+- lower `queue_position` means closer to the front of the queue
+- reminder sends do not move queue position
+- marking a problem reviewed moves it to the back of the queue
+- `review_count` increments each time a problem is marked reviewed
 
 Reminder policy:
-- scheduler scans due checkpoints (`due_at <= now`) and classifies pending vs overdue
+- scheduler scans available queue entries in ascending `queue_position`
 - scheduler sends only at configured local hour (`LEETCOACH_REMINDER_HOUR_LOCAL`, default `8`)
 - scheduler sends up to configured daily max (`LEETCOACH_REMINDER_DAILY_MAX`, default `2`) per user/day
-- scheduler uses balanced picks:
-  - up to one pending checkpoint
-  - up to one overdue backlog checkpoint
-  - fill remaining slots by oldest due date
 - scheduler sends a daily demarcation/header message before reminder entries
-- scheduler uses `last_reminded_at` to prevent duplicates in the same local user day
+- scheduler uses `last_review_requested_at` to prevent duplicates in the same local user day
 
 ## Command Contract (MVP)
 
 - `/log`
   - creates/reuses canonical row in `problems`
   - creates/updates user row in `user_problems`
-  - ensures day 7/day 21 review rows exist in `problem_reviews`
+  - initializes queue state for new user-problem rows
 
 - `/help`
   - shows available command menu
@@ -206,11 +183,17 @@ Reminder policy:
   - explicit alias of `/start` register-or-welcome behavior
 
 - `/due`
-  - lists user checkpoints in `pending` or `overdue`
+  - lists outstanding reminded-but-not-yet-reviewed problems
 
-- `/done <token> <7th|21st>`
-  - marks one checkpoint complete (`completed_at = now`)
-  - token is resolved from the latest `/due` output for the current user
+- `/reviewed <token>`
+  - marks one problem reviewed (`last_reviewed_at = now`)
+  - increments `review_count`
+  - moves the problem to the back of the queue
+  - token is resolved from the latest `/due`, `/list`, `/search`, or `/pattern`
+    output for the current user
+
+- `/done <token>`
+  - compatibility alias for `/reviewed <token>`
 
 - `/search <query>`
   - searches user-linked rows by title, pattern, and notes
@@ -223,9 +206,9 @@ Reminder policy:
   - lists user problems from `user_problems` by case-insensitive partial pattern match
 
 - `lch scheduler`
-  - scans pending checkpoints
+  - scans queue entries available for reminder
   - sends Telegram reminder messages
-  - updates `last_reminded_at` on successful send
+  - updates `last_review_requested_at` on successful send
 
 ## Notion Mapping (Design Only)
 
@@ -251,13 +234,13 @@ Current status:
 
 ## V1 Acceptance Checklist
 
-- [x] Canonical data model implemented (`users`, `problems`, `user_problems`, `problem_reviews`)
+- [x] Canonical data model implemented (`users`, `problems`, `user_problems`)
 - [x] Migrations are idempotent and applied through `lch migrate`
-- [x] Telegram logging flow works (`/log`) with day-7/day-21 checkpoint creation
+- [x] Telegram logging flow works (`/log`) with review queue initialization
 - [x] Retrieval commands work (`/list`, `/search`, `/pattern`)
-- [x] Due/complete flow works (`/due`, `/done <token> <7th|21st>`)
+- [x] Due/review flow works (`/due`, `/reviewed <token>`)
 - [x] Reminder scheduler works with daily local-hour gate and daily quota
-- [x] Scheduler balances pending + overdue selection and dedupes within local day
+- [x] Scheduler walks the review queue and dedupes within local day
 - [x] Scheduler startup preflight is available (`lch scheduler-doctor`) and enforced by `lch scheduler`
 - [x] Notion importer supports dry-run and apply (`lch import-notion`)
 - [x] Container runtime supports bot + scheduler services

@@ -10,7 +10,7 @@ Outbound reminders are delivered by the scheduler process (`lch scheduler`), not
 - `/help`
 - `/log`
 - `/due`
-- `/done <token> <7th|21st>`
+- `/reviewed <token>`
 - `/search <query>`
 - `/list`
 - `/pattern <pattern>`
@@ -69,7 +69,7 @@ Behavior:
 ## `/log` (guided flow)
 
 Purpose:
-- create or update one logged problem and ensure review checkpoints
+- create or update one logged problem and add it to the user review queue
 
 Input mode:
 - guided, multi-step prompts in chat
@@ -89,7 +89,7 @@ Prompt sequence:
 Behavior:
 - upserts canonical problem
 - upserts user problem record
-- ensures day-7 and day-21 review rows
+- ensures review queue state exists for the user problem
 - difficulty is case-insensitive but must be an exact known value
 - pattern is normalized to the canonical roadmap label and unknown values are rejected
 - LeetCode / NeetCode full URLs are accepted and normalized to stored slugs
@@ -108,24 +108,23 @@ Cancel:
 ## `/due`
 
 Purpose:
-- list due review checkpoints and provide short completion tokens
+- list outstanding review reminders and provide short completion tokens
 
 Input:
 - no arguments
 
 Behavior:
-- finds pending/overdue review rows for the current user
-- groups rows by problem so each problem appears once with a single token (`A1`, `A2`, ...)
-- shows day-7/day-21 checkpoints under the same problem entry (when due)
-- includes first-attempt timestamp (`solved_at`) for context
+- finds problems that were reminded but not yet marked reviewed
+- shows one token per problem (`A1`, `A2`, ...)
+- includes first-attempt timestamp (`solved_at`) and reminder context
 
 Success response:
-- compact numbered list with token, title, review day, status, due time
-- due time is rendered in configured local timezone
+- compact numbered list with token, title, review count, and outstanding-since time
+- outstanding-since time is rendered in configured local timezone
 - includes LeetCode and NeetCode links built from stored slugs
 
 No data response:
-- `No pending/overdue reviews.`
+- `No outstanding reviews.`
 
 ## `/remind`
 
@@ -153,7 +152,7 @@ Behavior:
 - `/remind last`:
   - shows the most recent reminder batch sent to the user
 - `/remind new`:
-  - selects one additional due reminder candidate immediately
+  - selects one additional queue candidate immediately
   - marks that candidate as reminded
 
 Error responses:
@@ -164,36 +163,37 @@ Error responses:
 ## Outbound Reminder Messages (Scheduler)
 
 Source:
-- periodic scheduler loop (`lch scheduler`) querying pending review checkpoints
+- periodic scheduler loop (`lch scheduler`) querying the user review queue
 
 Behavior:
-- sends reminders for due checkpoints (`due_at <= now`) with priority balancing:
-  - pending checkpoints first
-  - then overdue backlog (oldest first)
+- sends reminders from the front of each user’s queue
+- reminded problems stay in place until the user marks them reviewed
+- once a problem is marked reviewed, it moves to the back of the queue
 - daily max reminder picks use user override when present, otherwise `LEETCOACH_REMINDER_DAILY_MAX` (default `2`)
 - sends only at local hour `LEETCOACH_REMINDER_HOUR_LOCAL` (default `8`)
-- de-duplicates by local user day using `last_reminded_at`
+- de-duplicates by local user day using the latest reminder-request timestamp
 - sends a header message first so subsequent messages are clearly marked as reminder picks
-- includes first-attempt time, due time, and checkpoint day
+- includes first-attempt time, review count, and links
 - includes LeetCode/NeetCode links when available
-- instructs user to run `/due` and then `/done <token> <7th|21st>`
+- instructs user to run `/due` and then `/reviewed <token>`
 
-## `/done <token> <7th|21st>`
+## `/reviewed <token>`
 
 Purpose:
-- mark one due review checkpoint as completed
+- mark one reminded problem as reviewed
 
 Input:
-- short token from latest `/due` output plus checkpoint day
-- example: `/done A1 7th` or `/done A1 21st`
+- short token from latest `/due`, `/list`, `/search`, or `/pattern` output
+- example: `/reviewed A1`
 
 Behavior:
 - resolves token to `user_problem_id`
-- resolves day argument to `review_day` (7 or 21)
-- updates `completed_at` if the selected day row is still open
+- increments review count
+- updates `last_reviewed_at`
+- moves the problem to the back of the queue
 
 Success response:
-- `Marked complete: <token>`
+- `Marked reviewed: <token>`
 
 Error responses:
 - missing token -> usage hint
