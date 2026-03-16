@@ -80,6 +80,17 @@ def should_send_today(candidate: ReminderCandidate, now_iso: str) -> bool:
     )
 
 
+def was_group_reminded_today(
+    candidates: list[ReminderCandidate], now_iso: str, timezone_name: str
+) -> bool:
+    today = _local_date(now_iso, timezone_name)
+    return any(
+        candidate.last_reminded_at
+        and _local_date(candidate.last_reminded_at, timezone_name) == today
+        for candidate in candidates
+    )
+
+
 def _is_send_hour(timezone_name: str, now_iso: str, target_hour_local: int) -> bool:
     local_dt = _parse_iso(now_iso).astimezone(_resolve_timezone(timezone_name))
     return local_dt.hour == target_hour_local
@@ -248,6 +259,10 @@ def run_scheduler_once(
         for (chat_id, timezone), group in by_chat.items():
             if not _is_send_hour(timezone, now, config.reminder_hour_local):
                 skipped_hour += len(group)
+                continue
+
+            if was_group_reminded_today(group, now, timezone):
+                skipped += len(group)
                 continue
 
             due_and_unsent = [c for c in group if should_send_today(c, now)]
