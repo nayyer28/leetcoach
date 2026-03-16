@@ -34,8 +34,12 @@ class TelegramBotLogFlowUnitTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(context.user_data["log_payload"]["difficulty"], "medium")
         query.answer.assert_awaited_once()
         query.edit_message_reply_markup.assert_awaited_once_with(reply_markup=None)
-        message.reply_text.assert_awaited_once()
-        self.assertIn("LeetCode URL or slug?", message.reply_text.await_args.args[0])
+        self.assertEqual(message.reply_text.await_count, 2)
+        self.assertEqual(message.reply_text.await_args_list[0].args[0], "✓ Selected: Medium")
+        self.assertIn(
+            "LeetCode URL or slug?",
+            message.reply_text.await_args_list[1].args[0],
+        )
 
     async def test_log_pattern_callback_advances_to_solved_at_prompt(self) -> None:
         message = SimpleNamespace(reply_text=AsyncMock())
@@ -54,8 +58,9 @@ class TelegramBotLogFlowUnitTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(context.user_data["log_payload"]["pattern"], "Trees")
         query.answer.assert_awaited_once()
         query.edit_message_reply_markup.assert_awaited_once_with(reply_markup=None)
-        message.reply_text.assert_awaited_once()
-        self.assertIn("Solved time?", message.reply_text.await_args.args[0])
+        self.assertEqual(message.reply_text.await_count, 2)
+        self.assertEqual(message.reply_text.await_args_list[0].args[0], "✓ Selected: Trees")
+        self.assertIn("Solved time?", message.reply_text.await_args_list[1].args[0])
 
     async def test_log_pattern_message_reprompts_on_unknown_pattern(self) -> None:
         message = SimpleNamespace(text="unknown pattern", reply_text=AsyncMock())
