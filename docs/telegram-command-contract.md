@@ -127,36 +127,38 @@ Success response:
 No data response:
 - `No pending/overdue reviews.`
 
-## `/reminder`
+## `/remind`
 
 Purpose:
 - show the effective reminder settings for the current user
 
 Input:
-- no arguments
+- no arguments, or one of:
+  - `last`
+  - `new`
+  - `count <n>`
+  - `time <hour>`
 
 Behavior:
-- shows:
+- with no arguments, shows:
   - daily reminder count
   - reminder hour
-  - whether the count comes from the app default or a user override
-
-## `/reminder_count <n>`
-
-Purpose:
-- override the current user’s daily reminder count
-
-Input:
-- integer `n`
-
-Behavior:
-- accepts values from `1` to `10`
-- stores a user-specific daily reminder count
-- takes effect on future scheduler runs without redeploy
+  - whether count/hour come from app defaults or user overrides
+- `/remind count <n>`:
+  - accepts values from `1` to `10`
+  - stores a user-specific daily reminder count
+- `/remind time <hour>`:
+  - accepts values from `0` to `23`
+  - stores a user-specific reminder hour
+- `/remind last`:
+  - shows the most recent reminder batch sent to the user
+- `/remind new`:
+  - selects one additional due reminder candidate immediately
+  - marks that candidate as reminded
 
 Error responses:
-- missing argument -> usage hint
-- non-numeric argument -> validation error
+- invalid or missing subcommand args -> usage hint
+- non-numeric count/hour -> validation error
 - out of range -> validation error
 
 ## Outbound Reminder Messages (Scheduler)

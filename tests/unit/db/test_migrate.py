@@ -33,6 +33,7 @@ class MigrateUnitTest(unittest.TestCase):
             expected = [path.name for path in sorted(MIGRATIONS_DIR.glob("*.sql"))]
             self.assertEqual(versions, expected)
             self.assertIn("reminder_daily_max", user_columns)
+            self.assertIn("reminder_hour_local", user_columns)
 
 
 if __name__ == "__main__":

@@ -254,6 +254,54 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             self.assertEqual(mock_send.call_count, 2)
 
     @patch("leetcoach.reminder_scheduler._send_telegram_message")
+    def test_run_once_uses_user_specific_reminder_hour_override(self, mock_send) -> None:
+        mock_send.return_value = (True, "ok")
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "leetcoach-test.db"
+            migrate_database(str(db_path))
+
+            log_problem(
+                str(db_path),
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="UTC",
+                    title="Binary Search",
+                    difficulty="easy",
+                    leetcode_slug="binary-search",
+                    neetcode_slug="binary-search",
+                    pattern="binary-search",
+                    solved_at="2026-02-01T10:00:00+00:00",
+                    notes="",
+                ),
+            )
+
+            with get_connection(str(db_path)) as conn:
+                conn.execute(
+                    "UPDATE users SET reminder_hour_local = 11 WHERE telegram_user_id = ?",
+                    ("u-1",),
+                )
+                conn.commit()
+
+            cfg = AppConfig(
+                environment="test",
+                log_level="INFO",
+                timezone="UTC",
+                db_path=str(db_path),
+                telegram_bot_token="123:token",
+                allowed_user_ids=frozenset(),
+                reminder_hour_local=9,
+                reminder_daily_max=2,
+            )
+            skipped = run_scheduler_once(config=cfg, now_iso="2026-02-10T09:00:00+00:00")
+            self.assertEqual(skipped.sent, 0)
+            self.assertEqual(skipped.skipped_outside_send_hour, 1)
+
+            sent = run_scheduler_once(config=cfg, now_iso="2026-02-10T11:00:00+00:00")
+            self.assertEqual(sent.sent, 1)
+            self.assertEqual(sent.header_sent, 1)
+
+    @patch("leetcoach.reminder_scheduler._send_telegram_message")
     def test_run_once_continues_after_single_send_failure(self, mock_send) -> None:
         mock_send.side_effect = [(True, "ok"), (False, "network error"), (True, "ok")]
         with tempfile.TemporaryDirectory() as tmp:
