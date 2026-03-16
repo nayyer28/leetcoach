@@ -140,7 +140,7 @@ This is useful when you want to inspect scheduler behavior without waiting for t
 
 ## Logging UX Notes
 
-- `/log` now offers button choices for difficulty and known roadmap patterns
+- `/log` now offers inline button choices for difficulty and known roadmap patterns
 - typed difficulty is accepted only for exact values: `easy`, `medium`, `hard` (case-insensitive)
 - typed pattern is accepted only if it resolves to a known roadmap pattern
 - common aliases like `tree` normalize to `Trees`

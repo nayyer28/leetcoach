@@ -9,11 +9,18 @@ import logging
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from telegram import LinkPreviewOptions, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    LinkPreviewOptions,
+    ReplyKeyboardRemove,
+    Update,
+)
 from telegram.constants import ParseMode
 from telegram.error import Conflict, NetworkError
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     ConversationHandler,
@@ -111,6 +118,8 @@ ROADMAP_PATTERN_ALIASES: dict[str, str] = {
 }
 
 DIFFICULTY_OPTIONS = [["Easy", "Medium", "Hard"]]
+LOG_DIFFICULTY_CALLBACK_PREFIX = "log:difficulty:"
+LOG_PATTERN_CALLBACK_PREFIX = "log:pattern:"
 
 
 @dataclass(frozen=True)
@@ -245,9 +254,17 @@ def _log_prompt(step: int, total: int, text: str) -> str:
     return f"🧩 [{step}/{total}] {text}\nSend /cancel to stop."
 
 
-def _difficulty_reply_markup() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        DIFFICULTY_OPTIONS, resize_keyboard=True, one_time_keyboard=True
+def _difficulty_inline_markup() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    label,
+                    callback_data=f"{LOG_DIFFICULTY_CALLBACK_PREFIX}{label.lower()}",
+                )
+                for label in DIFFICULTY_OPTIONS[0]
+            ]
+        ]
     )
 
 
@@ -261,9 +278,20 @@ def _pattern_option_rows() -> list[list[str]]:
     return [labels[idx : idx + 2] for idx in range(0, len(labels), 2)]
 
 
-def _pattern_reply_markup() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        _pattern_option_rows(), resize_keyboard=True, one_time_keyboard=True
+def _pattern_inline_markup() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    label,
+                    callback_data=(
+                        f"{LOG_PATTERN_CALLBACK_PREFIX}{_normalize_pattern_key(label)}"
+                    ),
+                )
+                for label in row
+            ]
+            for row in _pattern_option_rows()
+        ]
     )
 
 
@@ -405,25 +433,55 @@ async def log_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["log_payload"]["title"] = update.message.text.strip()
     await update.message.reply_text(
         _log_prompt(2, 10, "Difficulty? Choose below or type easy/medium/hard."),
-        reply_markup=_difficulty_reply_markup(),
+        reply_markup=_difficulty_inline_markup(),
     )
     return LOG_DIFFICULTY
 
 
-async def log_difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    difficulty = _normalize_difficulty_input(update.message.text)
+async def _clear_inline_keyboard(update: Update) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        LOGGER.debug("Failed to clear inline keyboard", exc_info=True)
+
+
+async def _set_log_difficulty(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    raw_value: str,
+) -> int:
+    difficulty = _normalize_difficulty_input(raw_value)
     if difficulty is None:
-        await update.message.reply_text(
+        target = update.callback_query.message if update.callback_query else update.message
+        await target.reply_text(
             "⚠️ Unknown difficulty. Choose Easy, Medium, Hard, or type the exact value.",
-            reply_markup=_difficulty_reply_markup(),
+            reply_markup=_difficulty_inline_markup(),
         )
         return LOG_DIFFICULTY
     context.user_data["log_payload"]["difficulty"] = difficulty
-    await update.message.reply_text(
+    target = update.callback_query.message if update.callback_query else update.message
+    await target.reply_text(
         _log_prompt(3, 10, "LeetCode URL or slug? (or '-' to skip)"),
         reply_markup=ReplyKeyboardRemove(),
     )
     return LOG_LEETCODE_SLUG
+
+
+async def log_difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    return await _set_log_difficulty(update, context, update.message.text)
+
+
+async def log_difficulty_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    query = update.callback_query
+    await query.answer()
+    await _clear_inline_keyboard(update)
+    raw_value = query.data.removeprefix(LOG_DIFFICULTY_CALLBACK_PREFIX)
+    return await _set_log_difficulty(update, context, raw_value)
 
 
 async def log_leetcode_slug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -452,21 +510,27 @@ async def log_neetcode_slug(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     context.user_data["log_payload"]["neetcode_slug"] = slug
     await update.message.reply_text(
         _log_prompt(5, 10, "Pattern? Choose below or type the exact known pattern."),
-        reply_markup=_pattern_reply_markup(),
+        reply_markup=_pattern_inline_markup(),
     )
     return LOG_PATTERN
 
 
-async def log_pattern(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    pattern = _canonical_pattern_label(update.message.text)
+async def _set_log_pattern(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    raw_value: str,
+) -> int:
+    pattern = _canonical_pattern_label(raw_value)
     if pattern is None:
-        await update.message.reply_text(
+        target = update.callback_query.message if update.callback_query else update.message
+        await target.reply_text(
             "⚠️ Unknown pattern. Choose from the list or type the exact known pattern name.",
-            reply_markup=_pattern_reply_markup(),
+            reply_markup=_pattern_inline_markup(),
         )
         return LOG_PATTERN
     context.user_data["log_payload"]["pattern"] = pattern
-    await update.message.reply_text(
+    target = update.callback_query.message if update.callback_query else update.message
+    await target.reply_text(
         _log_prompt(
             6,
             10,
@@ -476,6 +540,18 @@ async def log_pattern(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         reply_markup=ReplyKeyboardRemove(),
     )
     return LOG_SOLVED_AT
+
+
+async def log_pattern(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    return await _set_log_pattern(update, context, update.message.text)
+
+
+async def log_pattern_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    await _clear_inline_keyboard(update)
+    raw_value = query.data.removeprefix(LOG_PATTERN_CALLBACK_PREFIX)
+    return await _set_log_pattern(update, context, raw_value)
 
 
 async def log_solved_at(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1112,14 +1188,26 @@ def build_application(config: AppConfig) -> Application:
         entry_points=[CommandHandler("log", log_command)],
         states={
             LOG_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, log_title)],
-            LOG_DIFFICULTY: [MessageHandler(filters.TEXT & ~filters.COMMAND, log_difficulty)],
+            LOG_DIFFICULTY: [
+                CallbackQueryHandler(
+                    log_difficulty_callback,
+                    pattern=rf"^{LOG_DIFFICULTY_CALLBACK_PREFIX}",
+                ),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, log_difficulty),
+            ],
             LOG_LEETCODE_SLUG: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, log_leetcode_slug)
             ],
             LOG_NEETCODE_SLUG: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, log_neetcode_slug)
             ],
-            LOG_PATTERN: [MessageHandler(filters.TEXT & ~filters.COMMAND, log_pattern)],
+            LOG_PATTERN: [
+                CallbackQueryHandler(
+                    log_pattern_callback,
+                    pattern=rf"^{LOG_PATTERN_CALLBACK_PREFIX}",
+                ),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, log_pattern),
+            ],
             LOG_SOLVED_AT: [MessageHandler(filters.TEXT & ~filters.COMMAND, log_solved_at)],
             LOG_CONCEPTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, log_concepts)],
             LOG_TIME_COMPLEXITY: [

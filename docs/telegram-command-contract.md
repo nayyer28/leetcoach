@@ -76,10 +76,10 @@ Input mode:
 
 Prompt sequence:
 1. title
-2. difficulty (`easy|medium|hard`) via button choices or exact typed value
+2. difficulty (`easy|medium|hard`) via inline button choices or exact typed value
 3. LeetCode URL or slug (`-` to skip)
 4. NeetCode URL or slug (required)
-5. pattern via button choices or exact typed value
+5. pattern via inline button choices or exact typed value
 6. solved timestamp (`now` or ISO 8601)
 7. concepts (`-` to skip)
 8. time complexity (`-` to skip)
