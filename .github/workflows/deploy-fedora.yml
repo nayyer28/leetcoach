@@ -1,6 +1,9 @@
 name: Deploy Fedora
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       ref:
@@ -22,7 +25,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.event.inputs.ref || github.ref_name }}
 
       - name: Build Docker image
         run: docker build -t leetcoach:ci .
