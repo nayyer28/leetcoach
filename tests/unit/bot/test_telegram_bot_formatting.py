@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 
+from telegram import InlineKeyboardMarkup
+
 from leetcoach.config import AppConfig
 from leetcoach.services.due_tokens import ProblemToken
 from leetcoach.services.query_service import DueReviewItem
@@ -9,6 +11,7 @@ from leetcoach.telegram_bot import (
     DueProblemEntry,
     _canonical_pattern_label,
     _chunk_text,
+    _difficulty_inline_markup,
     _extract_problem_slug,
     _format_timestamp,
     _group_due_entries,
@@ -18,6 +21,7 @@ from leetcoach.telegram_bot import (
     _normalize_difficulty_input,
     _parse_review_day,
     _normalize_solved_at,
+    _pattern_inline_markup,
     _render_problem_detail,
     _render_due,
     _render_quiz_question,
@@ -64,12 +68,38 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertEqual(_normalize_difficulty_input("hard"), "hard")
         self.assertIsNone(_normalize_difficulty_input("med"))
 
+    def test_difficulty_inline_markup_has_expected_buttons(self) -> None:
+        markup = _difficulty_inline_markup()
+        self.assertIsInstance(markup, InlineKeyboardMarkup)
+        self.assertEqual(
+            [button.text for button in markup.inline_keyboard[0]],
+            ["Easy", "Medium", "Hard"],
+        )
+        self.assertEqual(
+            [button.callback_data for button in markup.inline_keyboard[0]],
+            ["log:difficulty:easy", "log:difficulty:medium", "log:difficulty:hard"],
+        )
+
     def test_canonical_pattern_label(self) -> None:
         self.assertEqual(_canonical_pattern_label("Trees"), "Trees")
         self.assertEqual(_canonical_pattern_label("tree"), "Trees")
         self.assertEqual(_canonical_pattern_label("tree dfs"), "Trees")
         self.assertEqual(_canonical_pattern_label("Heap"), "Heap / Priority Queue")
         self.assertIsNone(_canonical_pattern_label("totally unknown"))
+
+    def test_pattern_inline_markup_has_known_pattern_buttons(self) -> None:
+        markup = _pattern_inline_markup()
+        self.assertIsInstance(markup, InlineKeyboardMarkup)
+        self.assertEqual(markup.inline_keyboard[0][0].text, "Arrays & Hashing")
+        self.assertEqual(
+            markup.inline_keyboard[0][0].callback_data,
+            "log:pattern:arrays hashing",
+        )
+        self.assertEqual(markup.inline_keyboard[-1][-1].text, "Math & Geometry")
+        self.assertEqual(
+            markup.inline_keyboard[-1][-1].callback_data,
+            "log:pattern:math geometry",
+        )
 
     def test_extract_problem_slug_from_url_or_slug(self) -> None:
         self.assertEqual(
