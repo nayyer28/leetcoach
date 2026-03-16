@@ -12,6 +12,7 @@ from leetcoach.reminder_scheduler import (
     build_reminder_message,
     scheduler_preflight,
     should_send_today,
+    was_group_reminded_today,
 )
 
 
@@ -87,6 +88,41 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
             timezone="Pacific/Kiritimati",
         )
         self.assertTrue(should_send_today(candidate, "2026-03-09T10:15:00+00:00"))
+
+    def test_was_group_reminded_today_true_when_any_candidate_was_sent_today(self) -> None:
+        candidates = [
+            ReminderCandidate(
+                review_id=1,
+                user_problem_id=10,
+                review_day=7,
+                due_at="2026-03-08T12:00:00+00:00",
+                buffer_until="2026-03-10T12:00:00+00:00",
+                last_reminded_at=None,
+                solved_at="2026-03-01T10:00:00+00:00",
+                title="A",
+                leetcode_slug="a",
+                neetcode_slug="a",
+                telegram_chat_id="chat-1",
+                timezone="UTC",
+            ),
+            ReminderCandidate(
+                review_id=2,
+                user_problem_id=11,
+                review_day=7,
+                due_at="2026-03-08T12:00:00+00:00",
+                buffer_until="2026-03-10T12:00:00+00:00",
+                last_reminded_at="2026-03-09T08:00:00+00:00",
+                solved_at="2026-03-01T10:00:00+00:00",
+                title="B",
+                leetcode_slug="b",
+                neetcode_slug="b",
+                telegram_chat_id="chat-1",
+                timezone="UTC",
+            ),
+        ]
+        self.assertTrue(
+            was_group_reminded_today(candidates, "2026-03-09T12:00:00+00:00", "UTC")
+        )
 
     def test_build_daily_header_message(self) -> None:
         text = build_daily_header_message()
