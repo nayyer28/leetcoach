@@ -18,6 +18,7 @@ from leetcoach.db.connection import get_connection
 
 
 QUIZ_TTL_HOURS = 24
+QUIZ_ANSWER_OPTION_RE = re.compile(r"\b([A-D])\b", re.IGNORECASE)
 
 KNOWN_QUIZ_TOPICS = frozenset(
     {
@@ -89,7 +90,7 @@ class StartQuizResult:
 
 @dataclass(frozen=True)
 class AnswerQuizResult:
-    status: str  # ok | no_active_quiz | user_not_registered
+    status: str  # ok | no_active_quiz | user_not_registered | invalid_answer
     feedback: QuizFeedbackPayload | None = None
     question: QuizQuestionPayload | None = None
     model_used: str | None = None
@@ -115,6 +116,13 @@ def normalize_quiz_topic(raw: str) -> str:
 
 def is_known_quiz_topic(raw_topic: str) -> bool:
     return normalize_quiz_topic(raw_topic) in KNOWN_QUIZ_TOPICS
+
+
+def extract_quiz_answer_option(raw_answer: str) -> str | None:
+    match = QUIZ_ANSWER_OPTION_RE.search(raw_answer.strip())
+    if match is None:
+        return None
+    return match.group(1).upper()
 
 
 def _extract_json_payload(text: str) -> dict[str, object]:
@@ -264,6 +272,10 @@ def answer_quiz(
             return AnswerQuizResult(status="no_active_quiz")
         question = _parse_question_payload(str(row["question_payload_json"]))
 
+    normalized_option = extract_quiz_answer_option(user_answer_text)
+    if normalized_option is None:
+        return AnswerQuizResult(status="invalid_answer", question=question)
+
     llm_out = provider.generate_text(_answer_check_prompt(question, user_answer_text))
     feedback = _parse_feedback_payload(llm_out.text)
     now_iso = _now_iso()
@@ -317,4 +329,3 @@ def reveal_quiz(*, db_path: str, telegram_user_id: str) -> RevealQuizResult:
         if marked:
             conn.commit()
     return RevealQuizResult(status="ok", question=question)
-

@@ -280,12 +280,16 @@ Input:
 
 Behavior:
 - message is treated as answer input
-- supports either letter (`A`) or short free-text answer
+- answer must include one of `A`, `B`, `C`, or `D`
+- explanation after the option is allowed (example: `B because hash maps are O(1) average`)
 - bot returns:
   - correctness
   - selected vs correct option
   - short explanation
   - short why-other-options-are-wrong summary
+
+Validation:
+- if no option choice is detected, bot asks the user to answer with `A/B/C/D`
 
 If no active quiz exists:
 - bot returns standard help hint (does not treat as answer)

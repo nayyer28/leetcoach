@@ -119,7 +119,37 @@ class QuizServiceIntegrationTest(unittest.TestCase):
             self.assertEqual(result.status, "unknown_topic")
             self.assertEqual(len(provider.calls), 0)
 
+    def test_invalid_answer_short_circuits_before_llm(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            telegram_user_id = self._seed_user(db_path)
+
+            provider = _StubProvider(
+                responses=[
+                    ("gemini-2.5-flash-lite", QUESTION_JSON),
+                    ("gemini-2.5-flash-lite", ANSWER_JSON),
+                ]
+            )
+
+            start = start_quiz(
+                db_path=db_path,
+                telegram_user_id=telegram_user_id,
+                topic="arrays",
+                provider=provider,
+            )
+            self.assertEqual(start.status, "ok")
+
+            answered = answer_quiz(
+                db_path=db_path,
+                telegram_user_id=telegram_user_id,
+                user_answer_text="kjfnaekfnaejkfnaekfjnefan",
+                provider=provider,
+            )
+            self.assertEqual(answered.status, "invalid_answer")
+            self.assertIsNotNone(answered.question)
+            self.assertEqual(len(provider.calls), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
-

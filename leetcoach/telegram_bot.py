@@ -772,7 +772,7 @@ def _render_quiz_question(question: QuizQuestionPayload, model_used: str | None)
     lines.extend(
         [
             "",
-            "Reply with your answer (free text).",
+            "Reply with A/B/C/D, optionally followed by your explanation.",
             "Use /reveal anytime to show the explanation.",
         ]
     )
@@ -1144,6 +1144,14 @@ async def default_text_command(update: Update, context: ContextTypes.DEFAULT_TYP
             return
         if answer_result.status == "ok":
             await update.message.reply_text(_render_quiz_feedback(answer_result))
+            return
+        if answer_result.status == "invalid_answer":
+            await update.message.reply_text(
+                "⚠️ Please answer with A, B, C, or D. "
+                "You can add your reasoning after the option, for example: "
+                "`B because ...`",
+                parse_mode=ParseMode.MARKDOWN,
+            )
             return
 
     await update.message.reply_text("👋 I’m here. Try /help to see available commands.")
