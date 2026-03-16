@@ -3,10 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from leetcoach.db.connection import get_connection
 from leetcoach.db.migrate import migrate_database
-from leetcoach.services.quiz_service import answer_quiz, reveal_quiz, start_quiz
+from leetcoach.services.quiz_service import (
+    answer_quiz,
+    interrupt_active_quiz,
+    reveal_quiz,
+    start_quiz,
+)
 
 
 QUESTION_JSON = """{
@@ -149,6 +155,79 @@ class QuizServiceIntegrationTest(unittest.TestCase):
             self.assertEqual(answered.status, "invalid_answer")
             self.assertIsNotNone(answered.question)
             self.assertEqual(len(provider.calls), 1)
+
+    def test_interrupt_active_quiz_closes_existing_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            telegram_user_id = self._seed_user(db_path)
+
+            provider = _StubProvider(
+                responses=[("gemini-2.5-flash-lite", QUESTION_JSON)]
+            )
+            start = start_quiz(
+                db_path=db_path,
+                telegram_user_id=telegram_user_id,
+                topic="arrays",
+                provider=provider,
+            )
+            self.assertEqual(start.status, "ok")
+
+            interrupted = interrupt_active_quiz(
+                db_path=db_path,
+                telegram_user_id=telegram_user_id,
+            )
+            self.assertTrue(interrupted)
+
+            reveal = reveal_quiz(
+                db_path=db_path,
+                telegram_user_id=telegram_user_id,
+            )
+            self.assertEqual(reveal.status, "no_active_quiz")
+
+    def test_expired_quiz_cannot_be_answered_or_revealed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            telegram_user_id = self._seed_user(db_path)
+
+            provider = _StubProvider(
+                responses=[("gemini-2.5-flash-lite", QUESTION_JSON)]
+            )
+            with patch(
+                "leetcoach.services.quiz_service._now_iso",
+                return_value="2026-03-11T10:00:00+00:00",
+            ):
+                start = start_quiz(
+                    db_path=db_path,
+                    telegram_user_id=telegram_user_id,
+                    topic="arrays",
+                    provider=provider,
+                )
+            self.assertEqual(start.status, "ok")
+
+            with patch(
+                "leetcoach.services.quiz_service._now_iso",
+                return_value="2026-03-11T10:31:00+00:00",
+            ):
+                answered = answer_quiz(
+                    db_path=db_path,
+                    telegram_user_id=telegram_user_id,
+                    user_answer_text="A because hash maps are fast",
+                    provider=provider,
+                )
+            self.assertEqual(answered.status, "expired_quiz")
+            self.assertEqual(len(provider.calls), 1)
+
+            with patch(
+                "leetcoach.services.quiz_service._now_iso",
+                return_value="2026-03-11T10:31:30+00:00",
+            ):
+                revealed = reveal_quiz(
+                    db_path=db_path,
+                    telegram_user_id=telegram_user_id,
+                )
+            self.assertEqual(revealed.status, "no_active_quiz")
 
 
 if __name__ == "__main__":

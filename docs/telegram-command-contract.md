@@ -265,6 +265,8 @@ Behavior:
   - `no` cancels and asks for another topic
 - on success, creates/replaces active quiz session for the user
 - response shows question text and options `A-D`
+- any other non-quiz command interrupts the active quiz session
+- quiz session expires after 30 minutes of inactivity/age
 
 Error responses:
 - provider not configured -> ask to set `GEMINI_API_KEY`
@@ -292,7 +294,7 @@ Validation:
 - if no option choice is detected, bot asks the user to answer with `A/B/C/D`
 
 If no active quiz exists:
-- bot returns standard help hint (does not treat as answer)
+- bot returns a compact help / command hint instead of treating the text as an answer
 
 ## `/reveal`
 
@@ -308,3 +310,6 @@ Behavior:
 
 If no active quiz exists:
 - `⚠️ No active quiz. Run /quiz first.`
+
+If quiz expired:
+- `⌛ This quiz expired. Run /quiz again.`

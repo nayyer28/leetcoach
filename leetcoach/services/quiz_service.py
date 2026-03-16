@@ -7,6 +7,7 @@ import re
 from typing import Protocol
 
 from leetcoach.dao.active_quiz_sessions_dao import (
+    close_quiz_session,
     delete_expired_terminal_sessions,
     get_active_quiz_session_by_user_id,
     mark_quiz_answered,
@@ -17,7 +18,7 @@ from leetcoach.dao.users_dao import get_user_id_by_telegram_user_id
 from leetcoach.db.connection import get_connection
 
 
-QUIZ_TTL_HOURS = 24
+QUIZ_TTL_HOURS = 0.5
 QUIZ_ANSWER_OPTION_RE = re.compile(r"\b([A-D])\b", re.IGNORECASE)
 
 KNOWN_QUIZ_TOPICS = frozenset(
@@ -90,7 +91,7 @@ class StartQuizResult:
 
 @dataclass(frozen=True)
 class AnswerQuizResult:
-    status: str  # ok | no_active_quiz | user_not_registered | invalid_answer
+    status: str  # ok | no_active_quiz | user_not_registered | invalid_answer | expired_quiz
     feedback: QuizFeedbackPayload | None = None
     question: QuizQuestionPayload | None = None
     model_used: str | None = None
@@ -98,7 +99,7 @@ class AnswerQuizResult:
 
 @dataclass(frozen=True)
 class RevealQuizResult:
-    status: str  # ok | no_active_quiz | user_not_registered
+    status: str  # ok | no_active_quiz | user_not_registered | expired_quiz
     question: QuizQuestionPayload | None = None
 
 
@@ -208,6 +209,33 @@ def _user_id_or_none(db_path: str, telegram_user_id: str) -> int | None:
         return get_user_id_by_telegram_user_id(conn, telegram_user_id=telegram_user_id)
 
 
+def _is_row_expired(row: object, *, now_iso: str) -> bool:
+    expires_at = str(row["expires_at"])
+    return expires_at < now_iso
+
+
+def interrupt_active_quiz(*, db_path: str, telegram_user_id: str) -> bool:
+    user_id = _user_id_or_none(db_path, telegram_user_id)
+    if user_id is None:
+        return False
+
+    now_iso = _now_iso()
+    with get_connection(db_path) as conn:
+        row = get_active_quiz_session_by_user_id(conn, user_id=user_id)
+        if row is None or str(row["status"]) not in {"asked", "answered", "revealed"}:
+            return False
+        closed = close_quiz_session(
+            conn,
+            user_id=user_id,
+            closed_at=now_iso,
+            expires_at=now_iso,
+            now_iso=now_iso,
+        )
+        if closed:
+            conn.commit()
+        return closed
+
+
 def start_quiz(
     *,
     db_path: str,
@@ -270,6 +298,18 @@ def answer_quiz(
         row = get_active_quiz_session_by_user_id(conn, user_id=user_id)
         if row is None or str(row["status"]) not in {"asked", "answered"}:
             return AnswerQuizResult(status="no_active_quiz")
+        now_iso = _now_iso()
+        if _is_row_expired(row, now_iso=now_iso):
+            closed = close_quiz_session(
+                conn,
+                user_id=user_id,
+                closed_at=now_iso,
+                expires_at=now_iso,
+                now_iso=now_iso,
+            )
+            if closed:
+                conn.commit()
+            return AnswerQuizResult(status="expired_quiz")
         question = _parse_question_payload(str(row["question_payload_json"]))
 
     normalized_option = extract_quiz_answer_option(user_answer_text)
@@ -318,6 +358,17 @@ def reveal_quiz(*, db_path: str, telegram_user_id: str) -> RevealQuizResult:
         row = get_active_quiz_session_by_user_id(conn, user_id=user_id)
         if row is None or str(row["status"]) not in {"asked", "answered", "revealed"}:
             return RevealQuizResult(status="no_active_quiz")
+        if _is_row_expired(row, now_iso=now_iso):
+            closed = close_quiz_session(
+                conn,
+                user_id=user_id,
+                closed_at=now_iso,
+                expires_at=now_iso,
+                now_iso=now_iso,
+            )
+            if closed:
+                conn.commit()
+            return RevealQuizResult(status="expired_quiz")
         question = _parse_question_payload(str(row["question_payload_json"]))
         marked = mark_quiz_revealed(
             conn,

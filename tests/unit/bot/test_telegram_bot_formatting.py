@@ -22,6 +22,7 @@ from leetcoach.telegram_bot import (
     _parse_review_day,
     _normalize_solved_at,
     _pattern_inline_markup,
+    _unknown_text_help_text,
     _render_problem_detail,
     _render_due,
     _render_quiz_question,
@@ -413,6 +414,13 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertIn("O(h)", text)
         self.assertIn("Notes:", text)
         self.assertIn("Careful with duplicates.", text)
+
+    def test_unknown_text_help_lists_primary_commands(self) -> None:
+        text = _unknown_text_help_text()
+        self.assertIn("I didn’t understand that", text)
+        self.assertIn("/help", text)
+        self.assertIn("/log", text)
+        self.assertIn("/quiz [topic]", text)
 
 
 if __name__ == "__main__":
