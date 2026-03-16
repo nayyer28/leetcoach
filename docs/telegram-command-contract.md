@@ -141,7 +141,7 @@ Behavior:
   - reminder hour
   - whether the count comes from the app default or a user override
 
-## `/reminder-count <n>`
+## `/reminder_count <n>`
 
 Purpose:
 - override the current user’s daily reminder count
