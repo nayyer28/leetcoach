@@ -133,7 +133,6 @@ def build_reminder_message(candidate: ReminderCandidate) -> str:
         f"Problem: {candidate.title}",
         f"First attempt: {_format_compact(candidate.solved_at, candidate.timezone)}",
         f"Reviews completed: {candidate.review_count}",
-        f"Queue position: {candidate.queue_position}",
     ]
     if candidate.last_reviewed_at:
         lines.append(

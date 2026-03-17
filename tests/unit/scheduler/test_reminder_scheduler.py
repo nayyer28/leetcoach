@@ -77,6 +77,7 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
         self.assertIn("LeetCoach Reminder", text)
         self.assertIn("LRU Cache", text)
         self.assertIn("Reviews completed: 2", text)
+        self.assertNotIn("Queue position", text)
         self.assertIn("Use /due, then /reviewed <token>", text)
 
     def test_should_send_today_true_on_new_local_day_even_same_utc_day(self) -> None:

@@ -184,6 +184,9 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
             text = update.message.reply_text.await_args.args[0]
             self.assertIn("Last Reminder Batch", text)
             self.assertIn("Two Sum", text)
+            self.assertIn("LC:", text)
+            self.assertIn("NC:", text)
+            self.assertNotIn("Queue position", text)
 
     async def test_remind_new_sends_one_extra_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
