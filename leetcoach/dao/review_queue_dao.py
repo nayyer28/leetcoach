@@ -241,20 +241,3 @@ def mark_reviewed(
         (reviewed_at, new_position, reviewed_at, user_problem_id, user_id),
     )
     return cur.rowcount > 0
-
-
-def reset_outstanding_review_requests(
-    conn: sqlite3.Connection,
-    *,
-    reset_at: str,
-) -> int:
-    cur = conn.execute(
-        """
-        UPDATE user_problems
-        SET last_review_requested_at = NULL,
-            updated_at = ?
-        WHERE last_review_requested_at IS NOT NULL
-        """,
-        (reset_at,),
-    )
-    return int(cur.rowcount)

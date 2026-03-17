@@ -21,7 +21,7 @@ Current phase:
 Completed:
 - data and behavior specification
 - software design document
-- CLI command via entrypoint: `lch` (`run`, `migrate`, `test`, `bot`, `doctor`, `scheduler-doctor`, `reset-reminders`, `import-notion`)
+- CLI command via entrypoint: `lch` (`run`, `migrate`, `test`, `bot`, `doctor`, `import-notion`)
 - schema migrations and DB layer
 - Telegram commands: `/start`, `/register`, `/help` (`/hi`), guided `/log`, `/due`, `/reviewed <token>`, `/remind`, `/search`, `/list`, `/pattern`, `/quiz [topic]`, `/reveal`
 - container runtime baseline (`Dockerfile`, `docker-compose.yml`)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -89,77 +88,6 @@ class MainDoctorUnitTest(unittest.TestCase):
                 result = runner.invoke(cli, ["scheduler-doctor"])
             self.assertEqual(result.exit_code, 0)
             self.assertIn("scheduler_preflight: OK", result.output)
-
-    def test_reset_reminders_clears_only_requested_state(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = Path(tmp) / "leetcoach-test.db"
-            migrate_database(str(db_path))
-            now_iso = "2026-03-18T08:00:00+00:00"
-            with sqlite3.connect(db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                conn.execute(
-                    """
-                    INSERT INTO users (
-                        telegram_user_id, telegram_chat_id, timezone,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?)
-                    """,
-                    ("u-1", "chat-1", "UTC", now_iso, now_iso),
-                )
-                conn.execute(
-                    """
-                    INSERT INTO problems (
-                        title, difficulty, leetcode_slug, neetcode_slug,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        "Contains Duplicate",
-                        "easy",
-                        "contains-duplicate",
-                        "contains-duplicate",
-                        now_iso,
-                        now_iso,
-                    ),
-                )
-                conn.execute(
-                    """
-                    INSERT INTO user_problems (
-                        user_id, problem_id, pattern, solved_at,
-                        queue_position, review_count,
-                        last_review_requested_at, last_reviewed_at,
-                        created_at, updated_at
-                    ) VALUES (
-                        1, 1, 'Arrays & Hashing', ?, 10, 2, ?, ?, ?, ?
-                    )
-                    """,
-                    (now_iso, now_iso, "2026-03-10T08:00:00+00:00", now_iso, now_iso),
-                )
-                conn.commit()
-
-            env = {
-                "LEETCOACH_DB_PATH": str(db_path),
-                "LEETCOACH_TELEGRAM_BOT_TOKEN": "123:token",
-            }
-            runner = CliRunner()
-            with patch.dict("os.environ", env, clear=False):
-                result = runner.invoke(cli, ["reset-reminders"])
-
-            self.assertEqual(result.exit_code, 0)
-            self.assertIn("cleared outstanding reminder state for 1 problem", result.output)
-
-            with sqlite3.connect(db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                row = conn.execute(
-                    """
-                    SELECT queue_position, review_count, last_review_requested_at, last_reviewed_at
-                    FROM user_problems
-                    """
-                ).fetchone()
-            self.assertEqual(int(row["queue_position"]), 10)
-            self.assertEqual(int(row["review_count"]), 2)
-            self.assertIsNone(row["last_review_requested_at"])
-            self.assertEqual(str(row["last_reviewed_at"]), "2026-03-10T08:00:00+00:00")
 
 
 if __name__ == "__main__":
