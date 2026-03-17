@@ -56,6 +56,7 @@ from leetcoach.services.query_service import (
     list_all_problems,
     list_by_pattern,
     list_due_reviews,
+    list_recent_problems,
     search_problems,
 )
 from leetcoach.services.quiz_service import (
@@ -234,7 +235,8 @@ def _commands_help_text() -> str:
     return (
         "🤖 <b>leetcoach Command Menu</b>\n\n"
         "📝 <b>Log</b>\n"
-        "• /log\n\n"
+        "• /log\n"
+        "• /log show [n]\n\n"
         "🧠 <b>Quiz</b>\n"
         "• /quiz\n"
         "• /quiz &lt;topic&gt;\n"
@@ -256,7 +258,8 @@ def _commands_help_text() -> str:
         "👤 <b>Registration</b>\n"
         "• /register\n\n"
         "ℹ️ <b>Help</b>\n"
-        "• /help"
+        "• /help\n"
+        "• /hi"
     )
 
 
@@ -492,11 +495,38 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await start_command(update, context)
 
 
+def _parse_log_show_limit(args: list[str]) -> int | None:
+    if not args or args[0].lower() != "show":
+        return None
+    if len(args) == 1:
+        return 1
+    if len(args) != 2:
+        return -1
+    try:
+        value = int(args[1])
+    except ValueError:
+        return -1
+    return value if value > 0 else -1
+
+
 async def log_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
         return ConversationHandler.END
     _interrupt_quiz_if_needed(cfg, update, context)
+    show_limit = _parse_log_show_limit(context.args)
+    if show_limit is not None:
+        if show_limit < 1:
+            await update.message.reply_text("Usage: /log show [n], where n is a positive integer.")
+            return ConversationHandler.END
+        telegram_user_id = _telegram_user_id(update)
+        rows = list_recent_problems(cfg.db_path, telegram_user_id, limit=show_limit)
+        if not rows:
+            await update.message.reply_text("🗂️ No logged problems yet.")
+            return ConversationHandler.END
+        token_map = _browse_token_map(context, telegram_user_id, rows)
+        await _reply_long_text(update, _render_problem_rows(rows, token_map, cfg.timezone))
+        return ConversationHandler.END
     await update.message.reply_text(
         _log_prompt(1, 10, "Enter problem title:"),
         reply_markup=ReplyKeyboardRemove(),
@@ -1155,7 +1185,6 @@ def _render_problem_rows(
         sorted_rows = sorted(
             group_rows,
             key=lambda row: (row["solved_at"], row["title"].lower()),
-            reverse=True,
         )
         for row in sorted_rows:
             token = token_by_problem_id.get(int(row["user_problem_id"]))
@@ -1501,7 +1530,7 @@ def build_application(config: AppConfig) -> Application:
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("register", register_command))
-    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler(["help", "hi"], help_command))
     app.add_handler(log_flow)
     app.add_handler(CommandHandler("due", due_command))
     app.add_handler(CommandHandler(["remind", "reminder"], remind_command))

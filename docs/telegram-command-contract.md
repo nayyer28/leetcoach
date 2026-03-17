@@ -8,6 +8,7 @@ Outbound reminders are delivered by the scheduler process (`lch scheduler`), not
 - `/start`
 - `/register`
 - `/help`
+- `/hi`
 - `/log`
 - `/due`
 - `/reviewed <token>`
@@ -66,6 +67,17 @@ Input:
 Behavior:
 - returns grouped command help text
 
+## `/hi`
+
+Purpose:
+- alias for `/help`
+
+Input:
+- no arguments
+
+Behavior:
+- returns the same grouped command help text as `/help`
+
 ## `/log` (guided flow)
 
 Purpose:
@@ -104,6 +116,16 @@ Accepted solved timestamp inputs:
 
 Cancel:
 - `/cancel` during flow aborts and clears pending state
+
+Shortcut mode:
+- `/log show`
+- `/log show <n>`
+
+Behavior:
+- does not start the guided log conversation
+- shows the most recently logged `n` problems for the current user
+- default `n` is `1`
+- invalid `n` returns a usage error
 
 ## `/due`
 
@@ -228,7 +250,8 @@ Input:
 - no arguments
 
 Behavior:
-- returns up to 100 user problems, newest solved first
+- returns up to 100 user problems
+- renders problems oldest-first within each pattern section
 
 Success response:
 - compact numbered list with title, difficulty, pattern, solved time

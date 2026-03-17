@@ -17,6 +17,7 @@ from leetcoach.telegram_bot import (
     _leetcode_url,
     _neetcode_url,
     _normalize_difficulty_input,
+    _parse_log_show_limit,
     _normalize_solved_at,
     _unknown_command_help_text,
     _pattern_inline_markup,
@@ -234,6 +235,34 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertLess(text.find("🧩 Arrays & Hashing"), text.find("🧩 Trees"))
         self.assertLess(text.find("🧩 Trees"), text.find("🧩 Graphs"))
 
+    def test_render_problem_rows_orders_oldest_first_within_pattern(self) -> None:
+        rows = [
+            {
+                "user_problem_id": 10,
+                "title": "Later Problem",
+                "difficulty": "medium",
+                "pattern": "Trees",
+                "solved_at": "2026-03-10T13:28:44+00:00",
+                "leetcode_slug": "later-problem",
+                "neetcode_slug": "later-problem",
+            },
+            {
+                "user_problem_id": 20,
+                "title": "Earlier Problem",
+                "difficulty": "easy",
+                "pattern": "Trees",
+                "solved_at": "2026-03-08T13:28:44+00:00",
+                "leetcode_slug": "earlier-problem",
+                "neetcode_slug": "earlier-problem",
+            },
+        ]
+        token_map = {
+            "A1": ProblemToken(user_problem_id=10),
+            "A2": ProblemToken(user_problem_id=20),
+        }
+        text = _render_problem_rows(rows, token_map, "Europe/Berlin")
+        self.assertLess(text.find("Earlier Problem"), text.find("Later Problem"))
+
     def test_render_due_includes_header_token_and_human_time(self) -> None:
         items = [
             DueReviewItem(
@@ -387,6 +416,15 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertIn("I don’t recognize `/quit`", text)
         self.assertIn("/help", text)
         self.assertIn("/log", text)
+
+    def test_parse_log_show_limit(self) -> None:
+        self.assertIsNone(_parse_log_show_limit([]))
+        self.assertIsNone(_parse_log_show_limit(["foo"]))
+        self.assertEqual(_parse_log_show_limit(["show"]), 1)
+        self.assertEqual(_parse_log_show_limit(["show", "3"]), 3)
+        self.assertEqual(_parse_log_show_limit(["show", "0"]), -1)
+        self.assertEqual(_parse_log_show_limit(["show", "abc"]), -1)
+        self.assertEqual(_parse_log_show_limit(["show", "2", "extra"]), -1)
 
 
 if __name__ == "__main__":

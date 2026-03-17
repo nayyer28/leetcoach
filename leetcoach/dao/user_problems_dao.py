@@ -120,7 +120,7 @@ def list_user_problems_by_pattern(
         JOIN problems p ON p.id = up.problem_id
         WHERE up.user_id = ?
           AND lower(up.pattern) LIKE ?
-        ORDER BY up.solved_at DESC
+        ORDER BY up.solved_at ASC, up.id ASC
         LIMIT 50
         """,
         (user_id, like),
@@ -143,7 +143,30 @@ def list_user_problems(
         FROM user_problems up
         JOIN problems p ON p.id = up.problem_id
         WHERE up.user_id = ?
-        ORDER BY up.solved_at DESC
+        ORDER BY up.solved_at ASC, up.id ASC
+        LIMIT ?
+        """,
+        (user_id, limit),
+    ).fetchall()
+
+
+def list_recent_user_problems(
+    conn: sqlite3.Connection, *, user_id: int, limit: int = 1
+) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT
+            up.id AS user_problem_id,
+            p.title,
+            p.difficulty,
+            p.leetcode_slug,
+            p.neetcode_slug,
+            up.pattern,
+            up.solved_at
+        FROM user_problems up
+        JOIN problems p ON p.id = up.problem_id
+        WHERE up.user_id = ?
+        ORDER BY up.solved_at DESC, up.id DESC
         LIMIT ?
         """,
         (user_id, limit),

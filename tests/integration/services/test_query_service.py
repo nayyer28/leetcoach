@@ -66,10 +66,10 @@ class QueryServiceIntegrationTest(unittest.TestCase):
 
             all_rows = list_all_problems(str(db_path), "u-1")
             self.assertEqual(len(all_rows), 2)
-            self.assertEqual(all_rows[0]["title"], "Sliding Window Maximum")
-            self.assertEqual(all_rows[1]["title"], "Maximum Depth of Binary Tree")
+            self.assertEqual(all_rows[0]["title"], "Maximum Depth of Binary Tree")
+            self.assertEqual(all_rows[1]["title"], "Sliding Window Maximum")
             detail = get_problem_detail(
-                str(db_path), "u-1", int(all_rows[0]["user_problem_id"])
+                str(db_path), "u-1", int(all_rows[1]["user_problem_id"])
             )
             self.assertIsNotNone(detail)
             self.assertEqual(detail["title"], "Sliding Window Maximum")

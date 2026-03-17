@@ -69,8 +69,8 @@ Command contract lives in:
 - [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
 
 Current commands:
-- `/start`, `/register`, `/help`
-- `/log`, `/due`, `/reviewed <token>`, `/remind`
+- `/start`, `/register`, `/help`, `/hi`
+- `/log`, `/log show [n]`, `/due`, `/reviewed <token>`, `/remind`
 - `/search <query>`, `/list`, `/pattern <pattern-substring>`, `/show <token>`
 - `/quiz [topic]`, `/reveal`
 
@@ -140,6 +140,7 @@ Reminder settings and review queue:
 - `/remind new` sends one additional review candidate immediately
 - `/due` shows problems that were reminded but not yet marked reviewed
 - `/reviewed <token>` marks a problem reviewed and moves it to the back of your review queue
+- `/log show [n]` shows the most recently logged `n` problems without starting the guided log flow
 
 Run one scheduler tick manually:
 
@@ -152,10 +153,12 @@ This is useful when you want to inspect scheduler behavior without waiting for t
 ## Logging UX Notes
 
 - `/log` now offers inline button choices for difficulty and known roadmap patterns
+- `/log show [n]` is a read-only shortcut, not part of the guided log conversation
 - typed difficulty is accepted only for exact values: `easy`, `medium`, `hard` (case-insensitive)
 - typed pattern is accepted only if it resolves to a known roadmap pattern
 - common aliases like `tree` normalize to `Trees`
 - LeetCode and NeetCode inputs accept either the full problem URL or the raw slug
+- `/list` renders problems oldest-first within each pattern section
 
 Notion import:
 
