@@ -835,7 +835,12 @@ def _render_last_batch(batch: list[Any], timezone_name: str) -> str:
         candidate = row_to_candidate(row)
         lines.append(f"{index}. {candidate.title}")
         lines.append(f"   Reviews completed: {candidate.review_count}")
-        lines.append(f"   Queue position: {candidate.queue_position}")
+        lc = _leetcode_url(candidate.leetcode_slug)
+        if lc:
+            lines.append(f"   🔗 LC: {lc}")
+        nc = _neetcode_url(candidate.neetcode_slug)
+        if nc:
+            lines.append(f"   🔗 NC: {nc}")
     return "\n".join(lines)
 
 
