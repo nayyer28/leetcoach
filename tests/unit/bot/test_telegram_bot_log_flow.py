@@ -113,7 +113,8 @@ class TelegramBotLogFlowUnitTest(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        next_state = await log_command(update, context)
+        with patch("leetcoach.telegram_bot._interrupt_quiz_if_needed"):
+            next_state = await log_command(update, context)
 
         self.assertEqual(next_state, LOG_TITLE)
         message.reply_text.assert_awaited_once()
@@ -152,6 +153,7 @@ class TelegramBotLogFlowUnitTest(unittest.IsolatedAsyncioTestCase):
         ]
 
         with (
+            patch("leetcoach.telegram_bot._interrupt_quiz_if_needed"),
             patch("leetcoach.telegram_bot.list_recent_problems", return_value=rows) as recent_mock,
             patch("leetcoach.telegram_bot._reply_long_text", new=AsyncMock()) as reply_mock,
         ):
@@ -181,7 +183,8 @@ class TelegramBotLogFlowUnitTest(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        next_state = await log_command(update, context)
+        with patch("leetcoach.telegram_bot._interrupt_quiz_if_needed"):
+            next_state = await log_command(update, context)
 
         self.assertEqual(next_state, -1)
         message.reply_text.assert_awaited_once()
