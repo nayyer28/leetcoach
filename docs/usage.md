@@ -81,6 +81,7 @@ Run one-off commands:
 ```bash
 docker compose run --rm bot doctor
 docker compose run --rm bot scheduler-doctor
+docker compose run --rm bot reset-reminders
 docker compose run --rm bot scheduler --once
 docker compose run --rm bot test
 docker compose run --rm bot test unit
@@ -99,6 +100,7 @@ Then run the same CLI directly inside the container:
 lch --help
 lch doctor
 lch scheduler-doctor
+lch reset-reminders
 lch migrate
 ```
 
@@ -121,6 +123,12 @@ Scheduler preflight check:
 
 ```bash
 docker compose run --rm bot scheduler-doctor
+```
+
+Reset outstanding reminder state and start `/due` fresh from now:
+
+```bash
+docker compose run --rm bot reset-reminders
 ```
 
 This checks:
