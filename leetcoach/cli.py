@@ -3,15 +3,12 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from datetime import UTC, datetime
 from urllib import error, request
 
 import click
 
 from leetcoach.app import run
 from leetcoach.config import load_config
-from leetcoach.dao.review_queue_dao import reset_outstanding_review_requests
-from leetcoach.db.connection import get_connection
 from leetcoach.db.migrate import migrate_database
 from leetcoach.env import load_environment
 from leetcoach.notion_importer import run_import
@@ -200,20 +197,6 @@ def scheduler_doctor_command() -> None:
     for issue in result.issues:
         click.echo(f"  - {issue}")
     raise SystemExit(1)
-
-
-@cli.command("reset-reminders")
-def reset_reminders_command() -> None:
-    """Clear outstanding reminder state so /due starts fresh."""
-    config = load_config()
-    now_iso = datetime.now(UTC).isoformat()
-    with get_connection(config.db_path) as conn:
-        cleared = reset_outstanding_review_requests(conn, reset_at=now_iso)
-        conn.commit()
-    click.echo(
-        f"[reset-reminders] cleared outstanding reminder state for {cleared} problem(s)"
-    )
-    raise SystemExit(0)
 
 
 @cli.command("doctor")
