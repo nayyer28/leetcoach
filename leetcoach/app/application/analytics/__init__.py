@@ -1,0 +1,1 @@
+"""Analytics application use cases."""

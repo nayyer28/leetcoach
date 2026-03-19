@@ -1,0 +1,1 @@
+"""Quiz application use cases."""

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from leetcoach.config import AppConfig, load_config
+from leetcoach.app.infrastructure.config.app_config import AppConfig, load_config
 from leetcoach.logging_setup import configure_logging
 
 

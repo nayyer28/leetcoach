@@ -1,2 +1,1 @@
-"""DAO layer for database operations."""
-
+"""Backward-compatible DAO package."""
