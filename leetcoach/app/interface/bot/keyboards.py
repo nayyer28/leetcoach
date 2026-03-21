@@ -46,3 +46,34 @@ def pattern_inline_markup(*, callback_prefix: str) -> InlineKeyboardMarkup:
             for row in pattern_option_rows()
         ]
     )
+
+
+def log_review_action_markup(*, callback_prefix: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Save", callback_data=f"{callback_prefix}save"),
+                InlineKeyboardButton("Edit", callback_data=f"{callback_prefix}edit"),
+                InlineKeyboardButton("Cancel", callback_data=f"{callback_prefix}cancel"),
+            ]
+        ]
+    )
+
+
+def log_edit_field_markup(*, callback_prefix: str) -> InlineKeyboardMarkup:
+    rows = [
+        [("Title", "title"), ("Difficulty", "difficulty")],
+        [("LeetCode URL", "leetcode_slug"), ("NeetCode URL", "neetcode_slug")],
+        [("Pattern", "pattern"), ("Concepts", "concepts")],
+        [("Time Complexity", "time_complexity"), ("Space Complexity", "space_complexity")],
+        [("Notes", "notes")],
+    ]
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(label, callback_data=f"{callback_prefix}{field}")
+                for label, field in row
+            ]
+            for row in rows
+        ]
+    )

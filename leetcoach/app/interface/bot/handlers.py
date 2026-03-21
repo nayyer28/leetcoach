@@ -84,6 +84,8 @@ from leetcoach.app.application.problems.browse_problems import (
 )
 from leetcoach.app.interface.bot.keyboards import (
     difficulty_inline_markup as _difficulty_inline_markup_impl,
+    log_edit_field_markup as _log_edit_field_markup_impl,
+    log_review_action_markup as _log_review_action_markup_impl,
     pattern_inline_markup as _pattern_inline_markup_impl,
 )
 from leetcoach.app.interface.bot.views import (
@@ -99,6 +101,8 @@ from leetcoach.app.interface.bot.views import (
     normalize_solved_at as _normalize_solved_at,
     remind_usage_text as _remind_usage_text,
     render_due as _render_due,
+    render_log_edit_prompt as _render_log_edit_prompt,
+    render_log_review as _render_log_review,
     render_last_batch as _render_last_batch_impl,
     render_problem_detail as _render_problem_detail,
     render_problem_rows as _render_problem_rows,
@@ -117,6 +121,10 @@ BOT_BOOTSTRAP_RETRIES = 5
 DIFFICULTY_OPTIONS = [["Easy", "Medium", "Hard"]]
 LOG_DIFFICULTY_CALLBACK_PREFIX = "log:difficulty:"
 LOG_PATTERN_CALLBACK_PREFIX = "log:pattern:"
+LOG_REVIEW_CALLBACK_PREFIX = "log:review:"
+LOG_EDIT_FIELD_CALLBACK_PREFIX = "log:editfield:"
+LOG_EDIT_DIFFICULTY_CALLBACK_PREFIX = "log:editdifficulty:"
+LOG_EDIT_PATTERN_CALLBACK_PREFIX = "log:editpattern:"
 
 (
     LOG_TITLE,
@@ -129,7 +137,12 @@ LOG_PATTERN_CALLBACK_PREFIX = "log:pattern:"
     LOG_TIME_COMPLEXITY,
     LOG_SPACE_COMPLEXITY,
     LOG_NOTES,
-) = range(10)
+    LOG_REVIEW,
+    LOG_EDIT_FIELD,
+    LOG_EDIT_TEXT,
+    LOG_EDIT_DIFFICULTY,
+    LOG_EDIT_PATTERN,
+) = range(15)
 
 def _clear_quiz_prompt_state(context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data.pop("quiz_unknown_topic", None)
@@ -165,6 +178,104 @@ def _difficulty_inline_markup() -> InlineKeyboardMarkup:
 
 def _pattern_inline_markup() -> InlineKeyboardMarkup:
     return _pattern_inline_markup_impl(callback_prefix=LOG_PATTERN_CALLBACK_PREFIX)
+
+
+def _log_review_action_markup() -> InlineKeyboardMarkup:
+    return _log_review_action_markup_impl(callback_prefix=LOG_REVIEW_CALLBACK_PREFIX)
+
+
+def _log_edit_field_markup() -> InlineKeyboardMarkup:
+    return _log_edit_field_markup_impl(callback_prefix=LOG_EDIT_FIELD_CALLBACK_PREFIX)
+
+
+def _log_edit_difficulty_inline_markup() -> InlineKeyboardMarkup:
+    return _difficulty_inline_markup_impl(
+        difficulty_options=DIFFICULTY_OPTIONS,
+        callback_prefix=LOG_EDIT_DIFFICULTY_CALLBACK_PREFIX,
+    )
+
+
+def _log_edit_pattern_inline_markup() -> InlineKeyboardMarkup:
+    return _pattern_inline_markup_impl(callback_prefix=LOG_EDIT_PATTERN_CALLBACK_PREFIX)
+
+
+def _log_field_label(field: str) -> str:
+    labels = {
+        "title": "Title",
+        "difficulty": "Difficulty",
+        "leetcode_slug": "LeetCode URL",
+        "neetcode_slug": "NeetCode URL",
+        "pattern": "Pattern",
+        "concepts": "Concepts",
+        "time_complexity": "Time Complexity",
+        "space_complexity": "Space Complexity",
+        "notes": "Notes",
+    }
+    return labels[field]
+
+
+def _log_field_current_value(payload: dict[str, Any], field: str) -> str | None:
+    value = payload.get(field)
+    if field == "leetcode_slug":
+        return _leetcode_url(value)
+    if field == "neetcode_slug":
+        return _neetcode_url(value)
+    if field == "difficulty" and value:
+        return str(value).title()
+    return value
+
+
+async def _show_log_review(target: Any, cfg: AppConfig, payload_data: dict[str, Any]) -> int:
+    await target.reply_text(
+        _render_log_review(payload_data, cfg.timezone),
+        reply_markup=_log_review_action_markup(),
+    )
+    return LOG_REVIEW
+
+
+def _build_log_input(cfg: AppConfig, update: Update, payload_data: dict[str, Any]) -> LogProblemInput:
+    return LogProblemInput(
+        telegram_user_id=_telegram_user_id(update),
+        telegram_chat_id=_telegram_chat_id(update),
+        timezone=cfg.timezone,
+        title=payload_data["title"],
+        difficulty=payload_data["difficulty"],
+        leetcode_slug=payload_data["leetcode_slug"],
+        neetcode_slug=payload_data["neetcode_slug"],
+        pattern=payload_data["pattern"],
+        solved_at=payload_data["solved_at"],
+        concepts=payload_data.get("concepts"),
+        time_complexity=payload_data.get("time_complexity"),
+        space_complexity=payload_data.get("space_complexity"),
+        notes=payload_data.get("notes"),
+    )
+
+
+async def _prompt_log_edit_field(
+    target: Any, context: ContextTypes.DEFAULT_TYPE, field: str
+) -> int:
+    payload_data: dict[str, Any] = context.user_data.get("log_payload", {})
+    context.user_data["log_edit_field"] = field
+    if field == "difficulty":
+        await target.reply_text(
+            f"✏️ Editing {_log_field_label(field)}\nChoose the new difficulty.",
+            reply_markup=_log_edit_difficulty_inline_markup(),
+        )
+        return LOG_EDIT_DIFFICULTY
+    if field == "pattern":
+        await target.reply_text(
+            f"✏️ Editing {_log_field_label(field)}\nChoose the new pattern.",
+            reply_markup=_log_edit_pattern_inline_markup(),
+        )
+        return LOG_EDIT_PATTERN
+    await target.reply_text(
+        _render_log_edit_prompt(
+            _log_field_label(field),
+            _log_field_current_value(payload_data, field),
+        ),
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    return LOG_EDIT_TEXT
 
 
 def _telegram_user_id(update: Update) -> str:
@@ -465,40 +576,133 @@ async def log_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     payload_data: dict[str, Any] = context.user_data.get("log_payload", {})
     notes_text = update.message.text.strip()
     payload_data["notes"] = None if notes_text == "-" else notes_text
+    return await _show_log_review(update.message, cfg, payload_data)
 
-    log_input = LogProblemInput(
-        telegram_user_id=_telegram_user_id(update),
-        telegram_chat_id=_telegram_chat_id(update),
-        timezone=cfg.timezone,
-        title=payload_data["title"],
-        difficulty=payload_data["difficulty"],
-        leetcode_slug=payload_data["leetcode_slug"],
-        neetcode_slug=payload_data["neetcode_slug"],
-        pattern=payload_data["pattern"],
-        solved_at=payload_data["solved_at"],
-        concepts=payload_data.get("concepts"),
-        time_complexity=payload_data.get("time_complexity"),
-        space_complexity=payload_data.get("space_complexity"),
-        notes=payload_data.get("notes"),
-    )
-    result = log_problem(cfg.db_path, log_input)
-    solved_label = _format_timestamp(payload_data["solved_at"], cfg.timezone)
-    await update.message.reply_text(
-        (
-            "✅ Problem logged\n"
-            f"Title: {log_input.title}\n"
-            f"Difficulty: {log_input.difficulty.title()}\n"
-            f"Pattern: {log_input.pattern}\n"
-            f"Solved: {solved_label}\n"
-            f"ID: {result.problem_ref}"
+
+async def log_review_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    cfg: AppConfig = context.application.bot_data["config"]
+    query = update.callback_query
+    await query.answer()
+    await _clear_inline_keyboard(update)
+    action = query.data.removeprefix(LOG_REVIEW_CALLBACK_PREFIX)
+    payload_data: dict[str, Any] = context.user_data.get("log_payload", {})
+    if action == "save":
+        log_input = _build_log_input(cfg, update, payload_data)
+        result = log_problem(cfg.db_path, log_input)
+        solved_label = _format_timestamp(payload_data["solved_at"], cfg.timezone)
+        await query.message.reply_text(
+            (
+                "✅ Problem logged\n"
+                f"Title: {log_input.title}\n"
+                f"Difficulty: {log_input.difficulty.title()}\n"
+                f"Pattern: {log_input.pattern}\n"
+                f"Solved: {solved_label}\n"
+                f"ID: {result.problem_ref}"
+            )
         )
+        context.user_data.pop("log_payload", None)
+        context.user_data.pop("log_edit_field", None)
+        return ConversationHandler.END
+    if action == "cancel":
+        context.user_data.pop("log_payload", None)
+        context.user_data.pop("log_edit_field", None)
+        await query.message.reply_text("🛑 Log flow cancelled.")
+        return ConversationHandler.END
+    await query.message.reply_text(
+        "What do you want to change?",
+        reply_markup=_log_edit_field_markup(),
     )
-    context.user_data.pop("log_payload", None)
-    return ConversationHandler.END
+    return LOG_EDIT_FIELD
+
+
+async def log_edit_field_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    query = update.callback_query
+    await query.answer()
+    await _clear_inline_keyboard(update)
+    field = query.data.removeprefix(LOG_EDIT_FIELD_CALLBACK_PREFIX)
+    return await _prompt_log_edit_field(query.message, context, field)
+
+
+async def log_edit_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    cfg: AppConfig = context.application.bot_data["config"]
+    payload_data: dict[str, Any] = context.user_data.get("log_payload", {})
+    field = context.user_data.get("log_edit_field")
+    if field is None:
+        await update.message.reply_text("⚠️ No field selected. Use /cancel and start again.")
+        return ConversationHandler.END
+    raw_value = update.message.text.strip()
+    value = None if raw_value == "-" else raw_value
+    if field == "title" and value is None:
+        await update.message.reply_text("⚠️ Title cannot be empty.")
+        return LOG_EDIT_TEXT
+    if field == "leetcode_slug":
+        if value is not None:
+            slug = _extract_problem_slug(value, provider="leetcode")
+            if slug is None:
+                await update.message.reply_text("⚠️ Invalid LeetCode URL or slug.")
+                return LOG_EDIT_TEXT
+            value = slug
+    elif field == "neetcode_slug":
+        if value is not None:
+            slug = _extract_problem_slug(value, provider="neetcode")
+            if slug is None:
+                await update.message.reply_text("⚠️ Invalid NeetCode URL or slug.")
+                return LOG_EDIT_TEXT
+            value = slug
+    payload_data[field] = value
+    context.user_data.pop("log_edit_field", None)
+    return await _show_log_review(update.message, cfg, payload_data)
+
+
+async def log_edit_difficulty_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    cfg: AppConfig = context.application.bot_data["config"]
+    query = update.callback_query
+    await query.answer()
+    await _clear_inline_keyboard(update)
+    raw_value = query.data.removeprefix(LOG_EDIT_DIFFICULTY_CALLBACK_PREFIX)
+    difficulty = _normalize_difficulty_input(raw_value)
+    if difficulty is None:
+        await query.message.reply_text(
+            "⚠️ Unknown difficulty. Choose Easy, Medium, or Hard.",
+            reply_markup=_log_edit_difficulty_inline_markup(),
+        )
+        return LOG_EDIT_DIFFICULTY
+    context.user_data["log_payload"]["difficulty"] = difficulty
+    context.user_data.pop("log_edit_field", None)
+    await _reply_log_inline_selection(query.message, raw_value.title())
+    return await _show_log_review(query.message, cfg, context.user_data["log_payload"])
+
+
+async def log_edit_pattern_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    cfg: AppConfig = context.application.bot_data["config"]
+    query = update.callback_query
+    await query.answer()
+    await _clear_inline_keyboard(update)
+    raw_value = query.data.removeprefix(LOG_EDIT_PATTERN_CALLBACK_PREFIX)
+    pattern = _canonical_pattern_label(raw_value)
+    if pattern is None:
+        await query.message.reply_text(
+            "⚠️ Unknown pattern. Choose from the list.",
+            reply_markup=_log_edit_pattern_inline_markup(),
+        )
+        return LOG_EDIT_PATTERN
+    context.user_data["log_payload"]["pattern"] = pattern
+    context.user_data.pop("log_edit_field", None)
+    await _reply_log_inline_selection(query.message, pattern)
+    return await _show_log_review(query.message, cfg, context.user_data["log_payload"])
 
 
 async def log_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.pop("log_payload", None)
+    context.user_data.pop("log_edit_field", None)
     await update.message.reply_text("🛑 Log flow cancelled.")
     return ConversationHandler.END
 
@@ -1094,6 +1298,31 @@ def build_application(config: AppConfig) -> Application:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, log_space_complexity)
             ],
             LOG_NOTES: [MessageHandler(filters.TEXT & ~filters.COMMAND, log_notes)],
+            LOG_REVIEW: [
+                CallbackQueryHandler(
+                    log_review_callback,
+                    pattern=rf"^{LOG_REVIEW_CALLBACK_PREFIX}",
+                )
+            ],
+            LOG_EDIT_FIELD: [
+                CallbackQueryHandler(
+                    log_edit_field_callback,
+                    pattern=rf"^{LOG_EDIT_FIELD_CALLBACK_PREFIX}",
+                )
+            ],
+            LOG_EDIT_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, log_edit_text)],
+            LOG_EDIT_DIFFICULTY: [
+                CallbackQueryHandler(
+                    log_edit_difficulty_callback,
+                    pattern=rf"^{LOG_EDIT_DIFFICULTY_CALLBACK_PREFIX}",
+                )
+            ],
+            LOG_EDIT_PATTERN: [
+                CallbackQueryHandler(
+                    log_edit_pattern_callback,
+                    pattern=rf"^{LOG_EDIT_PATTERN_CALLBACK_PREFIX}",
+                )
+            ],
         },
         fallbacks=[CommandHandler("cancel", log_cancel)],
     )

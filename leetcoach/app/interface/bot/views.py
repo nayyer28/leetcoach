@@ -151,6 +151,39 @@ def log_prompt(step: int, total: int, text: str) -> str:
     return f"🧩 [{step}/{total}] {text}\nSend /cancel to stop."
 
 
+def _display_optional_value(value: str | None) -> str:
+    return value if value else "-"
+
+
+def render_log_review(payload: dict[str, str | None], timezone_name: str) -> str:
+    lines = [
+        "🧾 Review Problem Log",
+        "",
+        f"Title: {_display_optional_value(payload.get('title'))}",
+        f"Difficulty: {_display_optional_value((payload.get('difficulty') or '').title() or None)}",
+        f"LeetCode URL: {_display_optional_value(leetcode_url(payload.get('leetcode_slug')))}",
+        f"NeetCode URL: {_display_optional_value(neetcode_url(payload.get('neetcode_slug')))}",
+        f"Pattern: {_display_optional_value(payload.get('pattern'))}",
+        f"Solved: {_display_optional_value(format_timestamp(payload['solved_at'], timezone_name) if payload.get('solved_at') else None)}",
+        f"Concepts: {_display_optional_value(payload.get('concepts'))}",
+        f"Time Complexity: {_display_optional_value(payload.get('time_complexity'))}",
+        f"Space Complexity: {_display_optional_value(payload.get('space_complexity'))}",
+        f"Notes: {_display_optional_value(payload.get('notes'))}",
+        "",
+        "Save this log, edit a field, or cancel.",
+    ]
+    return "\n".join(lines)
+
+
+def render_log_edit_prompt(field_label: str, current_value: str | None) -> str:
+    return (
+        f"✏️ Editing {field_label}\n"
+        f"Current value:\n{_display_optional_value(current_value)}\n\n"
+        "Send the new value now.\n"
+        "Use '-' to clear optional text fields."
+    )
+
+
 def normalize_difficulty_input(raw_value: str) -> str | None:
     normalized = raw_value.strip().lower()
     if normalized in {"easy", "medium", "hard"}:
