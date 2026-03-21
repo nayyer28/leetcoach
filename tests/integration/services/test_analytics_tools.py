@@ -216,6 +216,47 @@ class AnalyticsToolsIntegrationTest(unittest.TestCase):
                     ),
                 )
 
+    def test_execution_happens_with_sql_sort_and_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+
+            for title, pattern in [
+                ("Contains Duplicate", "trees"),
+                ("Two Sum", "tree"),
+                ("Maximum Depth of Binary Tree", "trees"),
+                ("Binary Tree Right Side View", "graph"),
+                ("Graph Valid Tree", "graphs"),
+            ]:
+                log_problem(
+                    db_path,
+                    LogProblemInput(
+                        telegram_user_id="u-1",
+                        telegram_chat_id="chat-1",
+                        timezone="UTC",
+                        title=title,
+                        difficulty="easy",
+                        leetcode_slug=title.lower().replace(" ", "-"),
+                        neetcode_slug=title.lower().replace(" ", "-"),
+                        pattern=pattern,
+                        solved_at="2026-03-01T10:00:00+00:00",
+                    ),
+                )
+
+            result = aggregate_user_problems(
+                db_path,
+                "u-1",
+                AggregateUserProblemsRequest(
+                    group_by="pattern",
+                    metric="problem_count",
+                    sort="metric_desc",
+                    limit=2,
+                ),
+            )
+
+            self.assertEqual([row.group for row in result.rows], ["Trees", "Graphs"])
+            self.assertEqual([row.value for row in result.rows], [3, 2])
+
 
 if __name__ == "__main__":
     unittest.main()

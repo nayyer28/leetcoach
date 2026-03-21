@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from typing import Any, Literal
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from leetcoach.app.infrastructure.config.db import get_connection
 from leetcoach.app.infrastructure.dao.analytics_dao import (
-    list_user_problem_analytics_rows,
+    list_aggregated_user_problems,
 )
 from leetcoach.app.infrastructure.dao.users_dao import get_user_id_by_telegram_user_id
 from leetcoach.app.application.shared.patterns import (
@@ -119,13 +118,6 @@ def aggregate_user_problems_tool_definition() -> dict[str, Any]:
     }
 
 
-def _resolve_timezone(timezone_name: str) -> ZoneInfo:
-    try:
-        return ZoneInfo(timezone_name)
-    except ZoneInfoNotFoundError:
-        return ZoneInfo("UTC")
-
-
 def _normalize_difficulty(value: str | None) -> str | None:
     if value is None:
         return None
@@ -178,58 +170,6 @@ def validate_aggregate_user_problems_request(
     )
 
 
-def _matches_filters(
-    row: dict[str, Any],
-    *,
-    difficulty: str | None,
-    pattern: str | None,
-    solved_date_from: date | None,
-    solved_date_to: date | None,
-) -> bool:
-    if difficulty is not None and str(row["difficulty"]).lower() != difficulty:
-        return False
-    if pattern is not None and canonical_pattern_label(str(row["pattern"])) != pattern:
-        return False
-
-    row_date = datetime.fromisoformat(str(row["solved_at"])).astimezone(
-        _resolve_timezone(str(row["timezone"]))
-    ).date()
-    if solved_date_from is not None and row_date < solved_date_from:
-        return False
-    if solved_date_to is not None and row_date > solved_date_to:
-        return False
-    return True
-
-
-def _group_value(row: dict[str, Any], group_by: AggregateGroupBy) -> str:
-    if group_by == "none":
-        return "all"
-    if group_by == "difficulty":
-        return str(row["difficulty"]).lower()
-    if group_by == "pattern":
-        return canonical_pattern_label(str(row["pattern"])) or str(row["pattern"])
-    if group_by == "solved_date":
-        return (
-            datetime.fromisoformat(str(row["solved_at"]))
-            .astimezone(_resolve_timezone(str(row["timezone"])))
-            .date()
-            .isoformat()
-        )
-    raise ValueError(f"unsupported group_by: {group_by}")
-
-
-def _metric_value(
-    metric: AggregateMetric, *, problem_count: int, review_count_sum: int
-) -> int:
-    if metric == "problem_count":
-        return problem_count
-    if metric == "review_count_sum":
-        return review_count_sum
-    if metric == "strength_score":
-        return problem_count + review_count_sum
-    raise ValueError(f"unsupported metric: {metric}")
-
-
 def aggregate_user_problems(
     db_path: str,
     telegram_user_id: str,
@@ -248,46 +188,31 @@ def aggregate_user_problems(
                 filters_applied={},
                 rows=[],
             )
-        rows = list_user_problem_analytics_rows(conn, user_id=user_id)
-
-    filtered_rows = [
-        row
-        for row in rows
-        if _matches_filters(
-            row,
+        rows = list_aggregated_user_problems(
+            conn,
+            user_id=user_id,
+            group_by=validated.group_by,
+            metric=validated.metric,
+            sort=validated.sort,
+            limit=validated.limit,
             difficulty=validated.difficulty,
             pattern=validated.pattern,
-            solved_date_from=validated.solved_date_from,
-            solved_date_to=validated.solved_date_to,
-        )
-    ]
-
-    grouped: dict[str, tuple[int, int]] = {}
-    for row in filtered_rows:
-        key = _group_value(row, validated.group_by)
-        problem_count, review_count_sum = grouped.get(key, (0, 0))
-        grouped[key] = (problem_count + 1, review_count_sum + int(row["review_count"]))
-
-    result_rows = [
-        AggregateResultRow(
-            group=group,
-            value=_metric_value(
-                validated.metric,
-                problem_count=problem_count,
-                review_count_sum=review_count_sum,
+            solved_date_from=(
+                validated.solved_date_from.isoformat()
+                if validated.solved_date_from is not None
+                else None
+            ),
+            solved_date_to=(
+                validated.solved_date_to.isoformat()
+                if validated.solved_date_to is not None
+                else None
             ),
         )
-        for group, (problem_count, review_count_sum) in grouped.items()
-    ]
 
-    if validated.sort == "metric_desc":
-        result_rows.sort(key=lambda row: (-row.value, row.group.lower()))
-    elif validated.sort == "metric_asc":
-        result_rows.sort(key=lambda row: (row.value, row.group.lower()))
-    elif validated.sort == "group_asc":
-        result_rows.sort(key=lambda row: row.group.lower())
-    elif validated.sort == "group_desc":
-        result_rows.sort(key=lambda row: row.group.lower(), reverse=True)
+    result_rows = [
+        AggregateResultRow(group=str(row["group_value"]), value=int(row["metric_value"]))
+        for row in rows
+    ]
 
     filters_applied: dict[str, str] = {}
     if validated.difficulty is not None:
@@ -303,5 +228,5 @@ def aggregate_user_problems(
         metric=validated.metric,
         group_by=validated.group_by,
         filters_applied=filters_applied,
-        rows=result_rows[: validated.limit],
+        rows=result_rows,
     )
