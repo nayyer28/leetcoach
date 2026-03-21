@@ -148,6 +148,7 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         help_text = _commands_help_text()
         self.assertIn("• /edit P1", help_text)
         self.assertNotIn("/edit P1 lc", help_text)
+        self.assertIn("• /ask &lt;question&gt;", help_text)
 
     def test_user_allowlist_behavior(self) -> None:
         open_cfg = AppConfig(
@@ -421,6 +422,7 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertIn("I didn’t understand that", text)
         self.assertIn("/hi", text)
         self.assertNotIn("/help", text)
+        self.assertIn("/ask <question>", text)
         self.assertIn("/log", text)
         self.assertIn("/quiz [topic]", text)
 
@@ -429,6 +431,7 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertIn("I don’t recognize `/quit`", text)
         self.assertIn("/hi", text)
         self.assertNotIn("/help", text)
+        self.assertIn("/ask <question>", text)
         self.assertIn("/log", text)
 
     def test_commands_help_text_escapes_html_placeholders(self) -> None:
