@@ -30,6 +30,8 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
     ) -> ReminderCandidate:
         return ReminderCandidate(
             user_problem_id=1,
+            display_id=1,
+            problem_ref="P1",
             user_id=1,
             queue_position=queue_position,
             last_review_requested_at=last_review_requested_at,
@@ -59,6 +61,8 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
     def test_build_reminder_message_contains_key_fields(self) -> None:
         candidate = ReminderCandidate(
             user_problem_id=1,
+            display_id=1,
+            problem_ref="P1",
             user_id=1,
             queue_position=30,
             last_review_requested_at=None,
@@ -75,10 +79,11 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
         )
         text = build_reminder_message(candidate)
         self.assertIn("LeetCoach Reminder", text)
+        self.assertIn("ID: P1", text)
         self.assertIn("LRU Cache", text)
         self.assertIn("Reviews completed: 2", text)
         self.assertNotIn("Queue position", text)
-        self.assertIn("Use /due, then /reviewed <token>", text)
+        self.assertIn("Use /due, then /reviewed <id>", text)
 
     def test_should_send_today_true_on_new_local_day_even_same_utc_day(self) -> None:
         candidate = self._candidate(

@@ -32,3 +32,46 @@ def upsert_problem(
     if row is None:
         raise RuntimeError("Failed to upsert problem")
     return int(row["id"])
+
+
+def update_problem_metadata(
+    conn: sqlite3.Connection,
+    *,
+    problem_id: int,
+    title: str | None = None,
+    difficulty: str | None = None,
+    leetcode_slug: str | None = None,
+    neetcode_slug: str | None = None,
+    now_iso: str,
+) -> bool:
+    row = conn.execute(
+        """
+        SELECT title, difficulty, leetcode_slug, neetcode_slug
+        FROM problems
+        WHERE id = ?
+        LIMIT 1
+        """,
+        (problem_id,),
+    ).fetchone()
+    if row is None:
+        return False
+    conn.execute(
+        """
+        UPDATE problems
+        SET title = ?,
+            difficulty = ?,
+            leetcode_slug = ?,
+            neetcode_slug = ?,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            title if title is not None else row["title"],
+            difficulty if difficulty is not None else row["difficulty"],
+            leetcode_slug if leetcode_slug is not None else row["leetcode_slug"],
+            neetcode_slug if neetcode_slug is not None else row["neetcode_slug"],
+            now_iso,
+            problem_id,
+        ),
+    )
+    return True

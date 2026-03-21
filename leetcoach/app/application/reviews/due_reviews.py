@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from leetcoach.app.application.problems.problem_refs import format_problem_ref
 from leetcoach.app.infrastructure.config.db import get_connection
 from leetcoach.app.infrastructure.dao.review_queue_dao import (
     list_outstanding_reviews_for_user,
@@ -12,6 +13,8 @@ from leetcoach.app.infrastructure.dao.users_dao import get_user_id_by_telegram_u
 @dataclass(frozen=True)
 class DueReviewItem:
     user_problem_id: int
+    display_id: int
+    problem_ref: str
     title: str
     leetcode_slug: str | None
     neetcode_slug: str | None
@@ -41,6 +44,8 @@ def list_due_reviews(db_path: str, telegram_user_id: str) -> list[DueReviewItem]
         items.append(
             DueReviewItem(
                 user_problem_id=int(row["user_problem_id"]),
+                display_id=int(row["display_id"]),
+                problem_ref=format_problem_ref(int(row["display_id"])),
                 title=str(row["title"]),
                 leetcode_slug=(
                     str(row["leetcode_slug"]) if row["leetcode_slug"] else None

@@ -7,7 +7,6 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from leetcoach.patterns import roadmap_pattern_info
 from leetcoach.app.application.quiz.common import AnswerQuizResult, QuizQuestionPayload
 from leetcoach.app.application.reviews.due_reviews import DueReviewItem
-from leetcoach.app.interface.bot.token_store import ProblemToken
 
 
 TELEGRAM_MESSAGE_CHUNK_SIZE = 3500
@@ -89,7 +88,7 @@ def commands_help_text() -> str:
         "• /reveal\n\n"
         "⏰ <b>Review</b>\n"
         "• /due\n"
-        "• /reviewed A1\n\n"
+        "• /reviewed P1\n\n"
         "• /remind\n"
         "• /remind last\n"
         "• /remind new\n"
@@ -100,7 +99,8 @@ def commands_help_text() -> str:
         "• /pattern &lt;text&gt;\n"
         "• /search &lt;text&gt;\n\n"
         "🔍 <b>Details</b>\n"
-        "• /show A1\n\n"
+        "• /show P1\n"
+        "• /edit P1 lc <slug-or-url>\n\n"
         "👤 <b>Registration</b>\n"
         "• /register\n\n"
         "ℹ️ <b>Help</b>\n"
@@ -117,11 +117,12 @@ def unknown_text_help_text() -> str:
         "• /log\n"
         "• /due\n"
         "• /remind\n"
-        "• /reviewed <token>\n"
+        "• /reviewed <id>\n"
         "• /list\n"
         "• /search <text>\n"
         "• /pattern <name>\n"
-        "• /show <token>\n"
+        "• /show <id>\n"
+        "• /edit <id> <field> <value>\n"
         "• /quiz [topic]\n"
         "• /reveal"
     )
@@ -135,11 +136,12 @@ def unknown_command_help_text(command_text: str) -> str:
         "• /log\n"
         "• /due\n"
         "• /remind\n"
-        "• /reviewed <token>\n"
+        "• /reviewed <id>\n"
         "• /list\n"
         "• /search <text>\n"
         "• /pattern <name>\n"
-        "• /show <token>\n"
+        "• /show <id>\n"
+        "• /edit <id> <field> <value>\n"
         "• /quiz [topic]\n"
         "• /reveal"
     )
@@ -174,14 +176,10 @@ def extract_problem_slug(raw_value: str, *, provider: str) -> str | None:
     return None
 
 
-def render_due(
-    items: list[DueReviewItem], token_map: dict[str, ProblemToken], timezone_name: str
-) -> str:
-    rev_lookup = {v.user_problem_id: k for k, v in token_map.items()}
+def render_due(items: list[DueReviewItem], timezone_name: str) -> str:
     lines: list[str] = ["⏰ Due Reviews", ""]
     for idx, item in enumerate(items, start=1):
-        token = rev_lookup[item.user_problem_id]
-        lines.append(f"{idx}. [{token}] {item.title}")
+        lines.append(f"{idx}. [{item.problem_ref}] {item.title}")
         lines.append(
             f"   First attempt • {format_timestamp_compact(item.solved_at, timezone_name)}"
         )
@@ -205,7 +203,7 @@ def render_due(
     if lines and not lines[-1]:
         lines.pop()
     lines.append("")
-    lines.append("Use /reviewed A1")
+    lines.append("Use /reviewed P1")
     return "\n".join(lines)
 
 
@@ -246,7 +244,7 @@ def render_last_batch(batch: list[object], timezone_name: str, row_to_candidate)
     ]
     for index, row in enumerate(batch, start=1):
         candidate = row_to_candidate(row)
-        lines.append(f"{index}. {candidate.title}")
+        lines.append(f"{index}. [{candidate.problem_ref}] {candidate.title}")
         lines.append(f"   Reviews completed: {candidate.review_count}")
         lc = leetcode_url(candidate.leetcode_slug)
         if lc:
@@ -327,13 +325,9 @@ def render_quiz_reveal(question: QuizQuestionPayload) -> str:
 
 def render_problem_rows(
     rows: list[dict[str, str]],
-    token_map: dict[str, ProblemToken],
     timezone_name: str,
 ) -> str:
     lines: list[str] = ["📚 Your Problems", ""]
-    token_by_problem_id = {
-        token.user_problem_id: key for key, token in token_map.items()
-    }
     grouped: dict[tuple[str, int, str], list[dict[str, str]]] = {}
     for row in rows:
         level, pattern_label, pattern_key = roadmap_pattern_info(row["pattern"])
@@ -351,21 +345,16 @@ def render_problem_rows(
             key=lambda row: (row["solved_at"], row["title"].lower()),
         )
         for row in sorted_rows:
-            token = token_by_problem_id.get(int(row["user_problem_id"]))
             lc = leetcode_url(row["leetcode_slug"] or None)
             nc = neetcode_url(row["neetcode_slug"] or None)
-            if token:
-                lines.append(f"{idx}. [{token}] {row['title']}")
-            else:
-                lines.append(f"{idx}. {row['title']}")
+            lines.append(f"{idx}. [{row['problem_ref']}] {row['title']}")
             lines.append(
                 (
                     f"   {row['difficulty'].title()} • {row['pattern']} • "
                     f"{format_timestamp_compact(row['solved_at'], timezone_name)}"
                 )
             )
-            if token:
-                lines.append(f"   Use /show {token}")
+            lines.append(f"   Use /show {row['problem_ref']}")
             if lc:
                 lines.append(f"   🔗 LC: {lc}")
             if nc:
@@ -382,6 +371,7 @@ def render_problem_detail(row: dict[str, str], timezone_name: str) -> str:
     nc = neetcode_url(row["neetcode_slug"] or None)
     lines = [
         f"📘 {row['title']}",
+        f"ID: {row['problem_ref']}",
         f"Difficulty: {row['difficulty'].title()}",
         f"Pattern: {row['pattern']}",
         f"Solved: {format_timestamp(row['solved_at'], timezone_name)}",

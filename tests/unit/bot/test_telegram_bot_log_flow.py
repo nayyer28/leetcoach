@@ -136,13 +136,14 @@ class TelegramBotLogFlowUnitTest(unittest.IsolatedAsyncioTestCase):
                         timezone="UTC",
                         db_path=".local/leetcoach.db",
                     ),
-                    "browse_tokens": SimpleNamespace(put=lambda _u, _ids: {}),
                 }
             ),
         )
         rows = [
             {
                 "user_problem_id": 10,
+                "display_id": 1,
+                "problem_ref": "P1",
                 "title": "Contains Duplicate",
                 "difficulty": "easy",
                 "pattern": "Arrays & Hashing",

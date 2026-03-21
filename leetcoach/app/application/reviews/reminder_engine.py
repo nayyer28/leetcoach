@@ -9,6 +9,7 @@ import time
 from urllib import error, parse, request
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from leetcoach.app.application.problems.problem_refs import format_problem_ref
 from leetcoach.app.infrastructure.config.app_config import AppConfig
 from leetcoach.app.infrastructure.config.db import get_connection
 from leetcoach.app.infrastructure.dao.review_queue_dao import (
@@ -24,6 +25,8 @@ LOGGER = logging.getLogger("leetcoach.scheduler")
 @dataclass(frozen=True)
 class ReminderCandidate:
     user_problem_id: int
+    display_id: int
+    problem_ref: str
     user_id: int
     queue_position: int
     last_review_requested_at: str | None
@@ -130,6 +133,7 @@ def _neetcode_url(neetcode_slug: str | None) -> str | None:
 def build_reminder_message(candidate: ReminderCandidate) -> str:
     lines = [
         "⏰ LeetCoach Reminder",
+        f"ID: {candidate.problem_ref}",
         f"Problem: {candidate.title}",
         f"First attempt: {_format_compact(candidate.solved_at, candidate.timezone)}",
         f"Reviews completed: {candidate.review_count}",
@@ -144,7 +148,7 @@ def build_reminder_message(candidate: ReminderCandidate) -> str:
     nc = _neetcode_url(candidate.neetcode_slug)
     if nc:
         lines.append(f"🔗 NC: {nc}")
-    lines.append("Use /due, then /reviewed <token>")
+    lines.append("Use /due, then /reviewed <id>")
     return "\n".join(lines)
 
 
@@ -158,6 +162,8 @@ def build_daily_header_message() -> str:
 def row_to_candidate(row: sqlite3.Row) -> ReminderCandidate:
     return ReminderCandidate(
         user_problem_id=int(row["user_problem_id"]),
+        display_id=int(row["display_id"]),
+        problem_ref=format_problem_ref(int(row["display_id"])),
         user_id=int(row["user_id"]) if row["user_id"] is not None else 0,
         queue_position=int(row["queue_position"]),
         last_review_requested_at=(

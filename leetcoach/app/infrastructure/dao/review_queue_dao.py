@@ -54,6 +54,7 @@ def list_outstanding_reviews_for_user(
         """
         SELECT
             up.id AS user_problem_id,
+            up.display_id,
             up.user_id,
             p.title,
             p.leetcode_slug,
@@ -84,6 +85,7 @@ def list_next_review_candidates_for_user(
         """
         SELECT
             up.id AS user_problem_id,
+            up.display_id,
             up.user_id,
             p.title,
             p.leetcode_slug,
@@ -119,6 +121,7 @@ def list_next_review_candidates_for_scheduler(conn: sqlite3.Connection) -> list[
         """
         SELECT
             up.id AS user_problem_id,
+            up.display_id,
             up.user_id,
             p.title,
             p.leetcode_slug,
@@ -159,6 +162,7 @@ def list_last_requested_batch_for_user(
         )
         SELECT
             up.id AS user_problem_id,
+            up.display_id,
             up.user_id,
             p.title,
             p.leetcode_slug,

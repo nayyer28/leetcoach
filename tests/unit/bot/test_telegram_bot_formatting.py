@@ -11,7 +11,6 @@ from leetcoach.app.application.quiz.common import (
     is_known_quiz_topic,
 )
 from leetcoach.app.application.reviews.due_reviews import DueReviewItem
-from leetcoach.app.interface.bot.token_store import ProblemToken
 from leetcoach.app.interface.bot.handlers import (
     _canonical_pattern_label,
     _chunk_text,
@@ -169,6 +168,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         rows = [
             {
                 "user_problem_id": 10,
+                "display_id": 1,
+                "problem_ref": "P1",
                 "title": "Validate Binary Search Tree",
                 "difficulty": "medium",
                 "pattern": "Trees",
@@ -177,12 +178,11 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
                 "neetcode_slug": "valid-binary-search-tree",
             }
         ]
-        token_map = {"A1": ProblemToken(user_problem_id=10)}
-        text = _render_problem_rows(rows, token_map, "Europe/Berlin")
+        text = _render_problem_rows(rows, "Europe/Berlin")
         self.assertIn("Your Problems", text)
         self.assertNotIn("<pre>", text)
-        self.assertIn("[A1]", text)
-        self.assertIn("Use /show A1", text)
+        self.assertIn("[P1]", text)
+        self.assertIn("Use /show P1", text)
         self.assertIn("Validate Binary Search Tree", text)
         self.assertIn("Medium", text)
         self.assertIn("Trees", text)
@@ -200,6 +200,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         rows = [
             {
                 "user_problem_id": 30,
+                "display_id": 3,
+                "problem_ref": "P3",
                 "title": "Graph Valid Tree",
                 "difficulty": "medium",
                 "pattern": "Graphs",
@@ -209,6 +211,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
             },
             {
                 "user_problem_id": 10,
+                "display_id": 1,
+                "problem_ref": "P1",
                 "title": "Contains Duplicate",
                 "difficulty": "easy",
                 "pattern": "Arrays and Hashing",
@@ -218,6 +222,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
             },
             {
                 "user_problem_id": 20,
+                "display_id": 2,
+                "problem_ref": "P2",
                 "title": "Binary Tree Right Side View",
                 "difficulty": "medium",
                 "pattern": "Tree DFS",
@@ -226,12 +232,7 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
                 "neetcode_slug": "binary-tree-right-side-view",
             },
         ]
-        token_map = {
-            "A1": ProblemToken(user_problem_id=10),
-            "A2": ProblemToken(user_problem_id=20),
-            "A3": ProblemToken(user_problem_id=30),
-        }
-        text = _render_problem_rows(rows, token_map, "Europe/Berlin")
+        text = _render_problem_rows(rows, "Europe/Berlin")
         self.assertLess(text.find("🧩 Arrays & Hashing"), text.find("🧩 Trees"))
         self.assertLess(text.find("🧩 Trees"), text.find("🧩 Graphs"))
 
@@ -239,6 +240,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         rows = [
             {
                 "user_problem_id": 10,
+                "display_id": 2,
+                "problem_ref": "P2",
                 "title": "Later Problem",
                 "difficulty": "medium",
                 "pattern": "Trees",
@@ -248,6 +251,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
             },
             {
                 "user_problem_id": 20,
+                "display_id": 1,
+                "problem_ref": "P1",
                 "title": "Earlier Problem",
                 "difficulty": "easy",
                 "pattern": "Trees",
@@ -256,17 +261,15 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
                 "neetcode_slug": "earlier-problem",
             },
         ]
-        token_map = {
-            "A1": ProblemToken(user_problem_id=10),
-            "A2": ProblemToken(user_problem_id=20),
-        }
-        text = _render_problem_rows(rows, token_map, "Europe/Berlin")
+        text = _render_problem_rows(rows, "Europe/Berlin")
         self.assertLess(text.find("Earlier Problem"), text.find("Later Problem"))
 
     def test_render_due_includes_header_token_and_human_time(self) -> None:
         items = [
             DueReviewItem(
                 user_problem_id=10,
+                display_id=1,
+                problem_ref="P1",
                 title="Validate Binary Search Tree",
                 leetcode_slug="validate-binary-search-tree",
                 neetcode_slug="valid-binary-search-tree",
@@ -277,11 +280,10 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
                 status="pending",
             )
         ]
-        token_map = {"A1": ProblemToken(user_problem_id=10)}
-        text = _render_due(items, token_map, "Europe/Berlin")
+        text = _render_due(items, "Europe/Berlin")
         self.assertIn("Due Reviews", text)
         self.assertNotIn("<pre>", text)
-        self.assertIn("[A1]", text)
+        self.assertIn("[P1]", text)
         self.assertIn("First attempt", text)
         self.assertIn("Reviews completed", text)
         self.assertIn("15 Mar 14:28 CET", text)
@@ -298,6 +300,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         items = [
             DueReviewItem(
                 user_problem_id=30,
+                display_id=3,
+                problem_ref="P3",
                 title="Pending Later",
                 leetcode_slug="l3",
                 neetcode_slug="n3",
@@ -309,6 +313,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
             ),
             DueReviewItem(
                 user_problem_id=20,
+                display_id=2,
+                problem_ref="P2",
                 title="Overdue Newer",
                 leetcode_slug="l2",
                 neetcode_slug="n2",
@@ -320,6 +326,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
             ),
             DueReviewItem(
                 user_problem_id=10,
+                display_id=1,
+                problem_ref="P1",
                 title="Overdue Older",
                 leetcode_slug="l1",
                 neetcode_slug="n1",
@@ -330,14 +338,9 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
                 status="pending",
             ),
         ]
-        token_map = {
-            "A1": ProblemToken(user_problem_id=10),
-            "A2": ProblemToken(user_problem_id=20),
-            "A3": ProblemToken(user_problem_id=30),
-        }
-        text = _render_due(items, token_map, "UTC")
-        self.assertLess(text.find("[A3] Pending Later"), text.find("[A2] Overdue Newer"))
-        self.assertLess(text.find("[A2] Overdue Newer"), text.find("[A1] Overdue Older"))
+        text = _render_due(items, "UTC")
+        self.assertLess(text.find("[P3] Pending Later"), text.find("[P2] Overdue Newer"))
+        self.assertLess(text.find("[P2] Overdue Newer"), text.find("[P1] Overdue Older"))
 
     def test_quiz_topic_recognition(self) -> None:
         self.assertTrue(is_known_quiz_topic("dp"))
@@ -380,6 +383,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
     def test_render_problem_detail_includes_all_optional_fields(self) -> None:
         row = {
             "user_problem_id": "10",
+            "display_id": 1,
+            "problem_ref": "P1",
             "title": "Validate Binary Search Tree",
             "difficulty": "medium",
             "pattern": "Trees",
@@ -395,6 +400,7 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         }
         text = _render_problem_detail(row, "Europe/Berlin")
         self.assertIn("Validate Binary Search Tree", text)
+        self.assertIn("ID: P1", text)
         self.assertIn("Concepts:", text)
         self.assertIn("Track lower and upper bounds recursively.", text)
         self.assertIn("Time complexity:", text)
