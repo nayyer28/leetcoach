@@ -4,9 +4,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from leetcoach.config import AppConfig
-from leetcoach.db.migrate import migrate_database
-from leetcoach.reminder_scheduler import (
+from leetcoach.app.infrastructure.config.app_config import AppConfig
+from leetcoach.app.misc.migrate import migrate_database
+from leetcoach.app.application.reviews.reminder_engine import (
     ReminderCandidate,
     build_daily_header_message,
     build_reminder_message,

@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from leetcoach.dao.active_quiz_sessions_dao import (
+from leetcoach.app.infrastructure.dao.active_quiz_sessions_dao import (
     close_quiz_session,
     delete_expired_terminal_sessions,
     get_active_quiz_session_by_user_id,
@@ -13,8 +13,8 @@ from leetcoach.dao.active_quiz_sessions_dao import (
     mark_quiz_revealed,
     upsert_active_quiz_session,
 )
-from leetcoach.db.connection import get_connection
-from leetcoach.db.migrate import migrate_database
+from leetcoach.app.infrastructure.config.db import get_connection
+from leetcoach.app.misc.migrate import migrate_database
 
 
 def _now_iso() -> str:

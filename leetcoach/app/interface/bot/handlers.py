@@ -25,21 +25,48 @@ from telegram.ext import (
     filters,
 )
 
-from leetcoach.config import AppConfig
-from leetcoach.dao.users_dao import (
+from leetcoach.app.application.problems.browse_problems import (
+    get_problem_detail,
+    list_all_problems,
+    list_by_pattern,
+    list_recent_problems,
+    search_problems,
+)
+from leetcoach.app.application.problems.log_problem import LogProblemInput, log_problem
+from leetcoach.app.application.quiz.answer_quiz import answer_quiz
+from leetcoach.app.application.quiz.common import (
+    AnswerQuizResult,
+    QuizQuestionPayload,
+    is_known_quiz_topic,
+)
+from leetcoach.app.application.quiz.interrupt_quiz import interrupt_active_quiz
+from leetcoach.app.application.quiz.reveal_quiz import reveal_quiz
+from leetcoach.app.application.quiz.start_quiz import start_quiz
+from leetcoach.app.application.reviews.complete_review import complete_review
+from leetcoach.app.application.reviews.due_reviews import (
+    DueReviewItem,
+    list_due_reviews,
+)
+from leetcoach.app.application.reviews.reminder_engine import (
+    build_reminder_message,
+    row_to_candidate,
+    select_candidates_for_batch,
+)
+from leetcoach.app.infrastructure.config.app_config import AppConfig
+from leetcoach.app.infrastructure.config.db import get_connection
+from leetcoach.app.infrastructure.dao.review_queue_dao import (
+    list_last_requested_batch_for_user,
+    list_next_review_candidates_for_user,
+    mark_review_requested,
+)
+from leetcoach.app.infrastructure.dao.users_dao import (
     get_user_id_by_telegram_user_id,
     get_user_reminder_preferences,
     set_user_reminder_daily_max,
     set_user_reminder_hour_local,
     upsert_user,
 )
-from leetcoach.dao.review_queue_dao import (
-    list_last_requested_batch_for_user,
-    list_next_review_candidates_for_user,
-    mark_review_requested,
-)
-from leetcoach.db.connection import get_connection
-from leetcoach.llm.gemini_provider import (
+from leetcoach.app.infrastructure.llm.gemini_provider import (
     DEFAULT_GEMINI_MODEL_PRIORITY,
     GeminiAllModelsFailed,
     GeminiProvider,
@@ -76,32 +103,7 @@ from leetcoach.app.interface.bot.views import (
     unknown_command_help_text as _unknown_command_help_text,
     unknown_text_help_text as _unknown_text_help_text,
 )
-from leetcoach.services.due_tokens import DueTokenStore, ProblemToken
-from leetcoach.services.log_problem_service import LogProblemInput, log_problem
-from leetcoach.services.query_service import (
-    DueReviewItem,
-    complete_review,
-    get_problem_detail,
-    list_all_problems,
-    list_by_pattern,
-    list_due_reviews,
-    list_recent_problems,
-    search_problems,
-)
-from leetcoach.services.quiz_service import (
-    AnswerQuizResult,
-    QuizQuestionPayload,
-    answer_quiz,
-    interrupt_active_quiz,
-    is_known_quiz_topic,
-    reveal_quiz,
-    start_quiz,
-)
-from leetcoach.reminder_scheduler import (
-    build_reminder_message,
-    row_to_candidate,
-    select_candidates_for_batch,
-)
+from leetcoach.app.interface.bot.token_store import DueTokenStore, ProblemToken
 
 
 LOGGER = logging.getLogger("leetcoach.telegram")

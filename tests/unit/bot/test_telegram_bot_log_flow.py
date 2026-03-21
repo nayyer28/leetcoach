@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from leetcoach.telegram_bot import (
+from leetcoach.app.interface.bot.handlers import (
     LOG_TITLE,
     LOG_LEETCODE_SLUG,
     LOG_PATTERN,
@@ -113,7 +113,7 @@ class TelegramBotLogFlowUnitTest(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        with patch("leetcoach.telegram_bot._interrupt_quiz_if_needed"):
+        with patch("leetcoach.app.interface.bot.handlers._interrupt_quiz_if_needed"):
             next_state = await log_command(update, context)
 
         self.assertEqual(next_state, LOG_TITLE)
@@ -153,9 +153,15 @@ class TelegramBotLogFlowUnitTest(unittest.IsolatedAsyncioTestCase):
         ]
 
         with (
-            patch("leetcoach.telegram_bot._interrupt_quiz_if_needed"),
-            patch("leetcoach.telegram_bot.list_recent_problems", return_value=rows) as recent_mock,
-            patch("leetcoach.telegram_bot._reply_long_text", new=AsyncMock()) as reply_mock,
+            patch("leetcoach.app.interface.bot.handlers._interrupt_quiz_if_needed"),
+            patch(
+                "leetcoach.app.interface.bot.handlers.list_recent_problems",
+                return_value=rows,
+            ) as recent_mock,
+            patch(
+                "leetcoach.app.interface.bot.handlers._reply_long_text",
+                new=AsyncMock(),
+            ) as reply_mock,
         ):
             next_state = await log_command(update, context)
 
@@ -183,7 +189,7 @@ class TelegramBotLogFlowUnitTest(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        with patch("leetcoach.telegram_bot._interrupt_quiz_if_needed"):
+        with patch("leetcoach.app.interface.bot.handlers._interrupt_quiz_if_needed"):
             next_state = await log_command(update, context)
 
         self.assertEqual(next_state, -1)

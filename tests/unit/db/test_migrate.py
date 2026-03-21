@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from leetcoach.db.migrate import MIGRATIONS_DIR, migrate_database
+from leetcoach.app.misc.migrate import MIGRATIONS_DIR, migrate_database
 
 
 class MigrateUnitTest(unittest.TestCase):

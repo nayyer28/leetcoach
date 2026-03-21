@@ -4,10 +4,15 @@ import unittest
 
 from telegram import InlineKeyboardMarkup
 
-from leetcoach.config import AppConfig
-from leetcoach.services.due_tokens import ProblemToken
-from leetcoach.services.query_service import DueReviewItem
-from leetcoach.telegram_bot import (
+from leetcoach.app.infrastructure.config.app_config import AppConfig
+from leetcoach.app.application.quiz.common import (
+    QuizQuestionPayload,
+    extract_quiz_answer_option,
+    is_known_quiz_topic,
+)
+from leetcoach.app.application.reviews.due_reviews import DueReviewItem
+from leetcoach.app.interface.bot.token_store import ProblemToken
+from leetcoach.app.interface.bot.handlers import (
     _canonical_pattern_label,
     _chunk_text,
     _difficulty_inline_markup,
@@ -27,11 +32,6 @@ from leetcoach.telegram_bot import (
     _render_quiz_question,
     _render_quiz_reveal,
     _render_problem_rows,
-)
-from leetcoach.services.quiz_service import (
-    QuizQuestionPayload,
-    extract_quiz_answer_option,
-    is_known_quiz_topic,
 )
 
 

@@ -5,9 +5,11 @@ from datetime import date, datetime
 from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from leetcoach.dao.analytics_dao import list_user_problem_analytics_rows
-from leetcoach.dao.users_dao import get_user_id_by_telegram_user_id
-from leetcoach.db.connection import get_connection
+from leetcoach.app.infrastructure.config.db import get_connection
+from leetcoach.app.infrastructure.dao.analytics_dao import (
+    list_user_problem_analytics_rows,
+)
+from leetcoach.app.infrastructure.dao.users_dao import get_user_id_by_telegram_user_id
 from leetcoach.patterns import canonical_pattern_label
 
 AggregateGroupBy = Literal["none", "difficulty", "pattern", "solved_date"]
@@ -188,7 +190,9 @@ def _group_value(row: dict[str, Any], group_by: AggregateGroupBy) -> str:
     raise ValueError(f"unsupported group_by: {group_by}")
 
 
-def _metric_value(metric: AggregateMetric, *, problem_count: int, review_count_sum: int) -> int:
+def _metric_value(
+    metric: AggregateMetric, *, problem_count: int, review_count_sum: int
+) -> int:
     if metric == "problem_count":
         return problem_count
     if metric == "review_count_sum":

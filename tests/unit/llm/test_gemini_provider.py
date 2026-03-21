@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from leetcoach.llm.gemini_provider import (
+from leetcoach.app.infrastructure.llm.gemini_provider import (
     DEFAULT_GEMINI_MODEL_PRIORITY,
     GeminiAllModelsFailed,
     GeminiApiError,

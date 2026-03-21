@@ -30,8 +30,9 @@ def start_quiz(
     telegram_user_id: str,
     topic: str | None,
     provider: LLMProvider,
-    now_iso_fn,
+    now_iso_fn=None,
 ) -> StartQuizResult:
+    now_iso_fn = now_iso_fn or default_now_iso
     if topic and not is_known_quiz_topic(topic):
         return StartQuizResult(status="unknown_topic")
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from leetcoach.services.analytics_tools import (
+from leetcoach.app.application.analytics.aggregate_user_problems import (
     AggregateProblemFilters,
     AggregateUserProblemsRequest,
     aggregate_user_problems_tool_definition,
