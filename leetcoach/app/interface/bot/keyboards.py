@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from leetcoach.patterns import ROADMAP_PATTERN_LEVELS, normalize_pattern_key
+from leetcoach.app.application.shared.patterns import ROADMAP_PATTERN_LEVELS, normalize_pattern_key
 
 
 def pattern_option_rows() -> list[list[str]]:

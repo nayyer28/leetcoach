@@ -7,7 +7,7 @@ from urllib import error, request
 
 import click
 
-from leetcoach.bootstrap import run
+from leetcoach.app.bootstrap.bootstrap import run
 from leetcoach.app.infrastructure.config.app_config import load_config
 from leetcoach.app.infrastructure.config.env import load_environment
 from leetcoach.app.interface.scheduler.runner import (
