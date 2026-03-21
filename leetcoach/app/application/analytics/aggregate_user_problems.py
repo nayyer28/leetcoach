@@ -10,7 +10,10 @@ from leetcoach.app.infrastructure.dao.analytics_dao import (
     list_user_problem_analytics_rows,
 )
 from leetcoach.app.infrastructure.dao.users_dao import get_user_id_by_telegram_user_id
-from leetcoach.app.application.shared.patterns import canonical_pattern_label
+from leetcoach.app.application.shared.patterns import (
+    ROADMAP_PATTERN_LEVELS,
+    canonical_pattern_label,
+)
 
 AggregateGroupBy = Literal["none", "difficulty", "pattern", "solved_date"]
 AggregateMetric = Literal["problem_count", "review_count_sum", "strength_score"]
@@ -32,6 +35,10 @@ VALID_SORTS: tuple[AggregateSort, ...] = (
     "metric_asc",
     "group_asc",
     "group_desc",
+)
+VALID_DIFFICULTIES: tuple[str, ...] = ("easy", "medium", "hard")
+VALID_PATTERN_LABELS: tuple[str, ...] = tuple(
+    label for _, label in sorted(ROADMAP_PATTERN_LEVELS.values(), key=lambda item: item[0])
 )
 
 
@@ -66,6 +73,18 @@ class AggregateUserProblemsResult:
     rows: list[AggregateResultRow]
 
 
+@dataclass(frozen=True)
+class ValidatedAggregateUserProblemsRequest:
+    group_by: AggregateGroupBy
+    metric: AggregateMetric
+    sort: AggregateSort
+    limit: int
+    difficulty: str | None
+    pattern: str | None
+    solved_date_from: date | None
+    solved_date_to: date | None
+
+
 def aggregate_user_problems_tool_definition() -> dict[str, Any]:
     return {
         "name": "aggregate_user_problems",
@@ -85,9 +104,9 @@ def aggregate_user_problems_tool_definition() -> dict[str, Any]:
                     "properties": {
                         "difficulty": {
                             "type": "string",
-                            "enum": ["easy", "medium", "hard"],
+                            "enum": list(VALID_DIFFICULTIES),
                         },
-                        "pattern": {"type": "string"},
+                        "pattern": {"type": "string", "enum": list(VALID_PATTERN_LABELS)},
                         "solved_date_from": {"type": "string"},
                         "solved_date_to": {"type": "string"},
                     },
@@ -111,8 +130,8 @@ def _normalize_difficulty(value: str | None) -> str | None:
     if value is None:
         return None
     normalized = value.strip().lower()
-    if normalized not in {"easy", "medium", "hard"}:
-        raise ValueError("difficulty must be one of easy, medium, hard")
+    if normalized not in VALID_DIFFICULTIES:
+        raise ValueError(f"difficulty must be one of {', '.join(VALID_DIFFICULTIES)}")
     return normalized
 
 
@@ -125,9 +144,9 @@ def _parse_local_date(value: str | None, field_name: str) -> date | None:
         raise ValueError(f"{field_name} must be YYYY-MM-DD") from exc
 
 
-def _validate_request(
+def validate_aggregate_user_problems_request(
     request: AggregateUserProblemsRequest,
-) -> tuple[str | None, str | None, date | None, date | None]:
+) -> ValidatedAggregateUserProblemsRequest:
     if request.group_by not in VALID_GROUP_BY:
         raise ValueError(f"group_by must be one of {', '.join(VALID_GROUP_BY)}")
     if request.metric not in VALID_METRICS:
@@ -147,7 +166,16 @@ def _validate_request(
     date_to = _parse_local_date(request.filters.solved_date_to, "solved_date_to")
     if date_from and date_to and date_from > date_to:
         raise ValueError("solved_date_from cannot be after solved_date_to")
-    return difficulty, pattern, date_from, date_to
+    return ValidatedAggregateUserProblemsRequest(
+        group_by=request.group_by,
+        metric=request.metric,
+        sort=request.sort,
+        limit=request.limit,
+        difficulty=difficulty,
+        pattern=pattern,
+        solved_date_from=date_from,
+        solved_date_to=date_to,
+    )
 
 
 def _matches_filters(
@@ -207,7 +235,7 @@ def aggregate_user_problems(
     telegram_user_id: str,
     request: AggregateUserProblemsRequest,
 ) -> AggregateUserProblemsResult:
-    difficulty, pattern, date_from, date_to = _validate_request(request)
+    validated = validate_aggregate_user_problems_request(request)
 
     with get_connection(db_path) as conn:
         user_id = get_user_id_by_telegram_user_id(
@@ -215,8 +243,8 @@ def aggregate_user_problems(
         )
         if user_id is None:
             return AggregateUserProblemsResult(
-                metric=request.metric,
-                group_by=request.group_by,
+                metric=validated.metric,
+                group_by=validated.group_by,
                 filters_applied={},
                 rows=[],
             )
@@ -227,16 +255,16 @@ def aggregate_user_problems(
         for row in rows
         if _matches_filters(
             row,
-            difficulty=difficulty,
-            pattern=pattern,
-            solved_date_from=date_from,
-            solved_date_to=date_to,
+            difficulty=validated.difficulty,
+            pattern=validated.pattern,
+            solved_date_from=validated.solved_date_from,
+            solved_date_to=validated.solved_date_to,
         )
     ]
 
     grouped: dict[str, tuple[int, int]] = {}
     for row in filtered_rows:
-        key = _group_value(row, request.group_by)
+        key = _group_value(row, validated.group_by)
         problem_count, review_count_sum = grouped.get(key, (0, 0))
         grouped[key] = (problem_count + 1, review_count_sum + int(row["review_count"]))
 
@@ -244,7 +272,7 @@ def aggregate_user_problems(
         AggregateResultRow(
             group=group,
             value=_metric_value(
-                request.metric,
+                validated.metric,
                 problem_count=problem_count,
                 review_count_sum=review_count_sum,
             ),
@@ -252,28 +280,28 @@ def aggregate_user_problems(
         for group, (problem_count, review_count_sum) in grouped.items()
     ]
 
-    if request.sort == "metric_desc":
+    if validated.sort == "metric_desc":
         result_rows.sort(key=lambda row: (-row.value, row.group.lower()))
-    elif request.sort == "metric_asc":
+    elif validated.sort == "metric_asc":
         result_rows.sort(key=lambda row: (row.value, row.group.lower()))
-    elif request.sort == "group_asc":
+    elif validated.sort == "group_asc":
         result_rows.sort(key=lambda row: row.group.lower())
-    elif request.sort == "group_desc":
+    elif validated.sort == "group_desc":
         result_rows.sort(key=lambda row: row.group.lower(), reverse=True)
 
     filters_applied: dict[str, str] = {}
-    if difficulty is not None:
-        filters_applied["difficulty"] = difficulty
-    if pattern is not None:
-        filters_applied["pattern"] = pattern
-    if date_from is not None:
-        filters_applied["solved_date_from"] = date_from.isoformat()
-    if date_to is not None:
-        filters_applied["solved_date_to"] = date_to.isoformat()
+    if validated.difficulty is not None:
+        filters_applied["difficulty"] = validated.difficulty
+    if validated.pattern is not None:
+        filters_applied["pattern"] = validated.pattern
+    if validated.solved_date_from is not None:
+        filters_applied["solved_date_from"] = validated.solved_date_from.isoformat()
+    if validated.solved_date_to is not None:
+        filters_applied["solved_date_to"] = validated.solved_date_to.isoformat()
 
     return AggregateUserProblemsResult(
-        metric=request.metric,
-        group_by=request.group_by,
+        metric=validated.metric,
+        group_by=validated.group_by,
         filters_applied=filters_applied,
-        rows=result_rows[: request.limit],
+        rows=result_rows[: validated.limit],
     )
