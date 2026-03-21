@@ -38,14 +38,17 @@ class TelegramBotQuizFlowUnitTest(unittest.IsolatedAsyncioTestCase):
             bot=SimpleNamespace(send_chat_action=AsyncMock()),
         )
 
-        with patch(
-            "leetcoach.app.interface.bot.handlers.ask_question",
-            return_value=AskServiceResult(
-                answer="You have solved 3 easy problems.",
-                model="gemini-2.5-flash-lite",
-                tool_executions=[],
-            ),
-        ) as ask_mock:
+        with (
+            patch("leetcoach.app.interface.bot.handlers._interrupt_quiz_if_needed"),
+            patch(
+                "leetcoach.app.interface.bot.handlers.ask_question",
+                return_value=AskServiceResult(
+                    answer="You have solved 3 easy problems.",
+                    model="gemini-2.5-flash-lite",
+                    tool_executions=[],
+                ),
+            ) as ask_mock,
+        ):
             await ask_command(update, context)
 
         context.bot.send_chat_action.assert_awaited_once()
@@ -75,7 +78,8 @@ class TelegramBotQuizFlowUnitTest(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        await ask_command(update, context)
+        with patch("leetcoach.app.interface.bot.handlers._interrupt_quiz_if_needed"):
+            await ask_command(update, context)
 
         message.reply_text.assert_awaited_once_with("Usage: /ask <question>")
 
