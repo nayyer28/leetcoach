@@ -71,7 +71,7 @@ from leetcoach.app.infrastructure.llm.gemini_provider import (
     GeminiAllModelsFailed,
     GeminiProvider,
 )
-from leetcoach.patterns import (
+from leetcoach.app.application.shared.patterns import (
     ROADMAP_PATTERN_LEVELS,
     canonical_pattern_label as _canonical_pattern_label,
     normalize_pattern_key as _normalize_pattern_key,

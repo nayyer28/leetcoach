@@ -10,7 +10,7 @@ from leetcoach.app.infrastructure.dao.analytics_dao import (
     list_user_problem_analytics_rows,
 )
 from leetcoach.app.infrastructure.dao.users_dao import get_user_id_by_telegram_user_id
-from leetcoach.patterns import canonical_pattern_label
+from leetcoach.app.application.shared.patterns import canonical_pattern_label
 
 AggregateGroupBy = Literal["none", "difficulty", "pattern", "solved_date"]
 AggregateMetric = Literal["problem_count", "review_count_sum", "strength_score"]

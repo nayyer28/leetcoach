@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from leetcoach.app.infrastructure.config.app_config import AppConfig, load_config
-from leetcoach.logging_setup import configure_logging
+from leetcoach.app.bootstrap.logging import configure_logging
 
 
 LOGGER = logging.getLogger("leetcoach")
