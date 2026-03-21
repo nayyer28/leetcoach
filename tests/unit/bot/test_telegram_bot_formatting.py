@@ -419,20 +419,27 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
     def test_unknown_text_help_lists_primary_commands(self) -> None:
         text = _unknown_text_help_text()
         self.assertIn("I didn’t understand that", text)
-        self.assertIn("/help", text)
+        self.assertIn("/hi", text)
+        self.assertNotIn("/help", text)
         self.assertIn("/log", text)
         self.assertIn("/quiz [topic]", text)
 
     def test_unknown_command_help_mentions_command_and_options(self) -> None:
         text = _unknown_command_help_text("/quit")
         self.assertIn("I don’t recognize `/quit`", text)
-        self.assertIn("/help", text)
+        self.assertIn("/hi", text)
+        self.assertNotIn("/help", text)
         self.assertIn("/log", text)
 
     def test_commands_help_text_escapes_html_placeholders(self) -> None:
         text = _commands_help_text()
         self.assertIn("&lt;topic&gt;", text)
         self.assertIn("&lt;text&gt;", text)
+
+    def test_commands_help_text_uses_hi_only_for_help(self) -> None:
+        text = _commands_help_text()
+        self.assertIn("• /hi", text)
+        self.assertNotIn("• /help", text)
 
     def test_parse_log_show_limit(self) -> None:
         self.assertIsNone(_parse_log_show_limit([]))

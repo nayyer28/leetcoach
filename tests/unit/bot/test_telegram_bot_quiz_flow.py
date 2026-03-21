@@ -89,7 +89,8 @@ class TelegramBotQuizFlowUnitTest(unittest.IsolatedAsyncioTestCase):
 
         message.reply_text.assert_awaited_once()
         self.assertIn("/quit", message.reply_text.await_args.args[0])
-        self.assertIn("/help", message.reply_text.await_args.args[0])
+        self.assertIn("/hi", message.reply_text.await_args.args[0])
+        self.assertNotIn("/help", message.reply_text.await_args.args[0])
 
 
 if __name__ == "__main__":
