@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-lch = "leetcoach.app.interface.cli.commands:cli"
+lch = "leetcoach.cli:cli"
 
 [build-system]
 requires = ["setuptools>=68"]

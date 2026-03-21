@@ -9,8 +9,8 @@ from urllib.error import HTTPError
 
 from click.testing import CliRunner
 
-from leetcoach.app.interface.cli.commands import cli
-from leetcoach.app.interface.cli.commands import _check_telegram_get_me, _mask_token
+from leetcoach.cli import cli
+from leetcoach.cli import _check_telegram_get_me, _mask_token
 from leetcoach.app.misc.migrate import migrate_database
 
 
@@ -27,7 +27,7 @@ class MainDoctorUnitTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("missing", detail.lower())
 
-    @patch("leetcoach.app.interface.cli.commands.request.urlopen")
+    @patch("leetcoach.cli.request.urlopen")
     def test_check_telegram_get_me_success(self, mock_urlopen) -> None:
         class _Resp:
             def read(self) -> bytes:
@@ -44,7 +44,7 @@ class MainDoctorUnitTest(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIn("@leetcoach_bot", detail)
 
-    @patch("leetcoach.app.interface.cli.commands.request.urlopen")
+    @patch("leetcoach.cli.request.urlopen")
     def test_check_telegram_get_me_http_error(self, mock_urlopen) -> None:
         err = HTTPError(
             url="https://api.telegram.org/bot123/getMe",
