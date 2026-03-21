@@ -32,6 +32,7 @@ from leetcoach.app.application.problems.browse_problems import (
     list_recent_problems,
     search_problems,
 )
+from leetcoach.app.application.ask.ask_service import ask_question
 from leetcoach.app.application.problems.log_problem import LogProblemInput, log_problem
 from leetcoach.app.application.quiz.answer_quiz import answer_quiz
 from leetcoach.app.application.quiz.common import (
@@ -467,6 +468,41 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     _interrupt_quiz_if_needed(cfg, update, context)
     await update.message.reply_text(_commands_help_text(), parse_mode=ParseMode.HTML)
+
+
+async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
+    _interrupt_quiz_if_needed(cfg, update, context)
+    if not context.args:
+        await update.message.reply_text("Usage: /ask <question>")
+        return
+
+    provider: GeminiProvider | None = context.application.bot_data.get("ask_provider")
+    if provider is None:
+        await update.message.reply_text(
+            "⚠️ Ask provider is not configured. Set GEMINI_API_KEY and restart bot."
+        )
+        return
+
+    question = " ".join(context.args).strip()
+    await _send_typing(update, context)
+    try:
+        result = ask_question(
+            db_path=cfg.db_path,
+            telegram_user_id=_telegram_user_id(update),
+            question=question,
+            provider=provider,
+        )
+    except (GeminiAllModelsFailed, ValueError, json.JSONDecodeError) as exc:
+        LOGGER.exception("Ask command failed")
+        await update.message.reply_text(
+            f"⚠️ Could not answer that right now: {exc}\nTry again shortly."
+        )
+        return
+
+    await update.message.reply_text(result.answer)
 
 
 async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1397,13 +1433,16 @@ def build_application(config: AppConfig) -> Application:
     )
     app.bot_data["config"] = config
     if config.gemini_api_key:
-        app.bot_data["quiz_provider"] = GeminiProvider(
+        provider = GeminiProvider(
             api_key=config.gemini_api_key,
             model_priority=DEFAULT_GEMINI_MODEL_PRIORITY,
             max_transient_retries=1,
         )
+        app.bot_data["quiz_provider"] = provider
+        app.bot_data["ask_provider"] = provider
     else:
         app.bot_data["quiz_provider"] = None
+        app.bot_data["ask_provider"] = None
 
     log_flow = ConversationHandler(
         entry_points=[CommandHandler("log", log_command)],
@@ -1496,6 +1535,7 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("register", register_command))
     app.add_handler(CommandHandler("hi", help_command))
+    app.add_handler(CommandHandler("ask", ask_command))
     app.add_handler(log_flow)
     app.add_handler(edit_flow)
     app.add_handler(CommandHandler("due", due_command))

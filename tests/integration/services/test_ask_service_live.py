@@ -7,7 +7,10 @@ import unittest
 
 from leetcoach.app.application.ask.ask_service import ask_question
 from leetcoach.app.application.problems.log_problem import LogProblemInput, log_problem
-from leetcoach.app.infrastructure.llm.gemini_provider import GeminiProvider
+from leetcoach.app.infrastructure.llm.gemini_provider import (
+    GeminiAllModelsFailed,
+    GeminiProvider,
+)
 from leetcoach.app.misc.migrate import migrate_database
 
 
@@ -60,12 +63,17 @@ class AskServiceLiveIntegrationTest(unittest.TestCase):
                 ),
             )
 
-            result = ask_question(
-                db_path=db_path,
-                telegram_user_id="u-1",
-                question="How many easy problems have I solved in Trees?",
-                provider=self.provider,
-            )
+            try:
+                result = ask_question(
+                    db_path=db_path,
+                    telegram_user_id="u-1",
+                    question="How many easy problems have I solved in Trees?",
+                    provider=self.provider,
+                )
+            except GeminiAllModelsFailed as exc:
+                if "network error" in str(exc).lower():
+                    self.skipTest(f"Live ask test skipped due to network issue: {exc}")
+                raise
 
             self.assertTrue(result.answer.strip())
             self.assertGreaterEqual(len(result.tool_executions), 1)

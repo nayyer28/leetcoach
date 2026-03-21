@@ -4,7 +4,10 @@ import json
 import os
 import unittest
 
-from leetcoach.app.infrastructure.llm.gemini_provider import GeminiProvider
+from leetcoach.app.infrastructure.llm.gemini_provider import (
+    GeminiAllModelsFailed,
+    GeminiProvider,
+)
 
 
 def _extract_json_payload(text: str) -> dict[str, object]:
@@ -40,7 +43,12 @@ class GeminiProviderLiveIntegrationTest(unittest.TestCase):
             "why_others_wrong must be an object with entries for all incorrect options only. "
             "No markdown fences. Topic should be arrays."
         )
-        result = provider.generate_text(prompt)
+        try:
+            result = provider.generate_text(prompt)
+        except GeminiAllModelsFailed as exc:
+            if "network error" in str(exc).lower():
+                self.skipTest(f"Live Gemini test skipped due to network issue: {exc}")
+            raise
         payload = _extract_json_payload(result.text)
 
         self.assertEqual(result.model, "gemini-2.5-flash-lite")
@@ -74,7 +82,12 @@ class GeminiProviderLiveIntegrationTest(unittest.TestCase):
             max_transient_retries=0,
         )
         prompt = "Reply with one sentence about binary search trees."
-        result = provider.generate_text(prompt)
+        try:
+            result = provider.generate_text(prompt)
+        except GeminiAllModelsFailed as exc:
+            if "network error" in str(exc).lower():
+                self.skipTest(f"Live Gemini test skipped due to network issue: {exc}")
+            raise
         self.assertEqual(result.model, "gemini-2.5-flash-lite")
         self.assertTrue(len(result.text.strip()) > 0)
 
