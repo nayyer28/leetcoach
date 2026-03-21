@@ -14,6 +14,7 @@ from leetcoach.app.application.reviews.due_reviews import DueReviewItem
 from leetcoach.app.interface.bot.handlers import (
     _canonical_pattern_label,
     _chunk_text,
+    _commands_help_text,
     _difficulty_inline_markup,
     _extract_problem_slug,
     _format_timestamp,
@@ -422,6 +423,10 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertIn("I don’t recognize `/quit`", text)
         self.assertIn("/help", text)
         self.assertIn("/log", text)
+
+    def test_commands_help_text_escapes_html_placeholders(self) -> None:
+        text = _commands_help_text()
+        self.assertIn("&lt;slug-or-url&gt;", text)
 
     def test_parse_log_show_limit(self) -> None:
         self.assertIsNone(_parse_log_show_limit([]))
