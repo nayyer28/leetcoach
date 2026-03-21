@@ -5,16 +5,24 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from leetcoach.app.interface.bot.handlers import (
+    LOG_EDIT_DIFFICULTY,
+    LOG_EDIT_FIELD,
+    LOG_EDIT_TEXT,
+    LOG_REVIEW,
     LOG_TITLE,
     LOG_LEETCODE_SLUG,
     LOG_PATTERN,
     LOG_SOLVED_AT,
     _difficulty_inline_markup,
     _pattern_inline_markup,
+    log_edit_field_callback,
+    log_edit_text,
     log_command,
     log_difficulty_callback,
+    log_notes,
     log_pattern,
     log_pattern_callback,
+    log_review_callback,
 )
 
 
@@ -196,6 +204,129 @@ class TelegramBotLogFlowUnitTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(next_state, -1)
         message.reply_text.assert_awaited_once()
         self.assertIn("Usage: /log show [n]", message.reply_text.await_args.args[0])
+
+    async def test_log_notes_shows_review_summary_instead_of_saving(self) -> None:
+        message = SimpleNamespace(text="important notes", reply_text=AsyncMock())
+        update = SimpleNamespace(message=message)
+        context = SimpleNamespace(
+            user_data={
+                "log_payload": {
+                    "title": "Two Sum",
+                    "difficulty": "easy",
+                    "leetcode_slug": "two-sum",
+                    "neetcode_slug": "two-sum",
+                    "pattern": "Arrays & Hashing",
+                    "solved_at": "2026-03-08T13:30:00+00:00",
+                    "concepts": "hash map",
+                    "time_complexity": "O(n)",
+                    "space_complexity": "O(n)",
+                }
+            },
+            application=SimpleNamespace(
+                bot_data={"config": SimpleNamespace(timezone="UTC")}
+            ),
+        )
+
+        next_state = await log_notes(update, context)
+
+        self.assertEqual(next_state, LOG_REVIEW)
+        self.assertEqual(context.user_data["log_payload"]["notes"], "important notes")
+        message.reply_text.assert_awaited_once()
+        self.assertIn("Review Problem Log", message.reply_text.await_args.args[0])
+        self.assertIsNotNone(message.reply_text.await_args.kwargs["reply_markup"])
+
+    async def test_log_review_edit_shows_field_picker(self) -> None:
+        message = SimpleNamespace(reply_text=AsyncMock())
+        query = SimpleNamespace(
+            data="log:review:edit",
+            answer=AsyncMock(),
+            edit_message_reply_markup=AsyncMock(),
+            message=message,
+        )
+        update = SimpleNamespace(callback_query=query)
+        context = SimpleNamespace(
+            user_data={"log_payload": {"title": "Two Sum"}},
+            application=SimpleNamespace(
+                bot_data={"config": SimpleNamespace(timezone="UTC")}
+            ),
+        )
+
+        next_state = await log_review_callback(update, context)
+
+        self.assertEqual(next_state, LOG_EDIT_FIELD)
+        message.reply_text.assert_awaited_once()
+        self.assertIn("What do you want to change?", message.reply_text.await_args.args[0])
+
+    async def test_log_edit_field_concepts_prompts_with_current_value(self) -> None:
+        message = SimpleNamespace(reply_text=AsyncMock())
+        query = SimpleNamespace(
+            data="log:editfield:concepts",
+            answer=AsyncMock(),
+            edit_message_reply_markup=AsyncMock(),
+            message=message,
+        )
+        update = SimpleNamespace(callback_query=query)
+        context = SimpleNamespace(
+            user_data={"log_payload": {"concepts": "hash map complement"}},
+        )
+
+        next_state = await log_edit_field_callback(update, context)
+
+        self.assertEqual(next_state, LOG_EDIT_TEXT)
+        self.assertEqual(context.user_data["log_edit_field"], "concepts")
+        self.assertIn("Current value:", message.reply_text.await_args.args[0])
+        self.assertIn("hash map complement", message.reply_text.await_args.args[0])
+
+    async def test_log_edit_field_difficulty_reuses_selectable_options(self) -> None:
+        message = SimpleNamespace(reply_text=AsyncMock())
+        query = SimpleNamespace(
+            data="log:editfield:difficulty",
+            answer=AsyncMock(),
+            edit_message_reply_markup=AsyncMock(),
+            message=message,
+        )
+        update = SimpleNamespace(callback_query=query)
+        context = SimpleNamespace(user_data={"log_payload": {"difficulty": "easy"}})
+
+        next_state = await log_edit_field_callback(update, context)
+
+        self.assertEqual(next_state, LOG_EDIT_DIFFICULTY)
+        markup = message.reply_text.await_args.kwargs["reply_markup"]
+        self.assertEqual(
+            [button.text for button in markup.inline_keyboard[0]],
+            [button.text for button in _difficulty_inline_markup().inline_keyboard[0]],
+        )
+
+    async def test_log_edit_text_updates_value_and_returns_to_review(self) -> None:
+        message = SimpleNamespace(text="updated concepts", reply_text=AsyncMock())
+        update = SimpleNamespace(message=message)
+        context = SimpleNamespace(
+            user_data={
+                "log_payload": {
+                    "title": "Two Sum",
+                    "difficulty": "easy",
+                    "leetcode_slug": "two-sum",
+                    "neetcode_slug": "two-sum",
+                    "pattern": "Arrays & Hashing",
+                    "solved_at": "2026-03-08T13:30:00+00:00",
+                    "concepts": "old concepts",
+                    "time_complexity": None,
+                    "space_complexity": None,
+                    "notes": None,
+                },
+                "log_edit_field": "concepts",
+            },
+            application=SimpleNamespace(
+                bot_data={"config": SimpleNamespace(timezone="UTC")}
+            ),
+        )
+
+        next_state = await log_edit_text(update, context)
+
+        self.assertEqual(next_state, LOG_REVIEW)
+        self.assertEqual(context.user_data["log_payload"]["concepts"], "updated concepts")
+        self.assertNotIn("log_edit_field", context.user_data)
+        self.assertIn("Review Problem Log", message.reply_text.await_args.args[0])
 
 
 if __name__ == "__main__":
