@@ -4,7 +4,7 @@ import json
 import os
 import unittest
 
-from leetcoach.llm.gemini_provider import GeminiProvider
+from leetcoach.app.infrastructure.llm.gemini_provider import GeminiProvider
 
 
 def _extract_json_payload(text: str) -> dict[str, object]:

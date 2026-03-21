@@ -5,14 +5,12 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from leetcoach.db.connection import get_connection
-from leetcoach.db.migrate import migrate_database
-from leetcoach.services.quiz_service import (
-    answer_quiz,
-    interrupt_active_quiz,
-    reveal_quiz,
-    start_quiz,
-)
+from leetcoach.app.application.quiz.answer_quiz import answer_quiz
+from leetcoach.app.application.quiz.interrupt_quiz import interrupt_active_quiz
+from leetcoach.app.application.quiz.reveal_quiz import reveal_quiz
+from leetcoach.app.application.quiz.start_quiz import start_quiz
+from leetcoach.app.infrastructure.config.db import get_connection
+from leetcoach.app.misc.migrate import migrate_database
 
 
 QUESTION_JSON = """{
@@ -195,7 +193,7 @@ class QuizServiceIntegrationTest(unittest.TestCase):
                 responses=[("gemini-2.5-flash-lite", QUESTION_JSON)]
             )
             with patch(
-                "leetcoach.services.quiz_service._now_iso",
+                "leetcoach.app.application.quiz.start_quiz.default_now_iso",
                 return_value="2026-03-11T10:00:00+00:00",
             ):
                 start = start_quiz(
@@ -207,7 +205,7 @@ class QuizServiceIntegrationTest(unittest.TestCase):
             self.assertEqual(start.status, "ok")
 
             with patch(
-                "leetcoach.services.quiz_service._now_iso",
+                "leetcoach.app.application.quiz.answer_quiz.default_now_iso",
                 return_value="2026-03-11T10:31:00+00:00",
             ):
                 answered = answer_quiz(
@@ -220,7 +218,7 @@ class QuizServiceIntegrationTest(unittest.TestCase):
             self.assertEqual(len(provider.calls), 1)
 
             with patch(
-                "leetcoach.services.quiz_service._now_iso",
+                "leetcoach.app.application.quiz.reveal_quiz.default_now_iso",
                 return_value="2026-03-11T10:31:30+00:00",
             ):
                 revealed = reveal_quiz(

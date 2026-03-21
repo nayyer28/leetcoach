@@ -4,11 +4,11 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from leetcoach.dao.problems_dao import upsert_problem
-from leetcoach.dao.user_problems_dao import get_user_problem_detail, upsert_user_problem
-from leetcoach.dao.users_dao import upsert_user
-from leetcoach.db.connection import get_connection
-from leetcoach.db.migrate import migrate_database
+from leetcoach.app.infrastructure.dao.problems_dao import upsert_problem
+from leetcoach.app.infrastructure.dao.user_problems_dao import get_user_problem_detail, upsert_user_problem
+from leetcoach.app.infrastructure.dao.users_dao import upsert_user
+from leetcoach.app.infrastructure.config.db import get_connection
+from leetcoach.app.misc.migrate import migrate_database
 
 
 class UserProblemsDaoUnitTest(unittest.TestCase):

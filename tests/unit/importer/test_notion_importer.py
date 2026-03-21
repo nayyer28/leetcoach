@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from leetcoach.notion_importer import (
+from leetcoach.app.misc.notion_importer import (
     _extract_page_id,
     _parse_date_to_utc_iso,
     _parse_title_difficulty_date,

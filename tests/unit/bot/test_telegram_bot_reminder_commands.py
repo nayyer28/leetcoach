@@ -6,11 +6,11 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from leetcoach.config import AppConfig
-from leetcoach.db.connection import get_connection
-from leetcoach.db.migrate import migrate_database
-from leetcoach.services.log_problem_service import LogProblemInput, log_problem
-from leetcoach.telegram_bot import remind_command
+from leetcoach.app.infrastructure.config.app_config import AppConfig
+from leetcoach.app.infrastructure.config.db import get_connection
+from leetcoach.app.misc.migrate import migrate_database
+from leetcoach.app.application.problems.log_problem import LogProblemInput, log_problem
+from leetcoach.app.interface.bot.handlers import remind_command
 
 
 def _context(*, db_path: str, args: list[str]) -> SimpleNamespace:

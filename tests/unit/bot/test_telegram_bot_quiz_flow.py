@@ -4,9 +4,9 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from leetcoach.config import AppConfig
-from leetcoach.services.quiz_service import QuizQuestionPayload, StartQuizResult
-from leetcoach.telegram_bot import quiz_command, unknown_command
+from leetcoach.app.application.quiz.common import QuizQuestionPayload, StartQuizResult
+from leetcoach.app.infrastructure.config.app_config import AppConfig
+from leetcoach.app.interface.bot.handlers import quiz_command, unknown_command
 
 
 class TelegramBotQuizFlowUnitTest(unittest.IsolatedAsyncioTestCase):
@@ -55,7 +55,9 @@ class TelegramBotQuizFlowUnitTest(unittest.IsolatedAsyncioTestCase):
             model_used="gemini-2.5-flash",
         )
 
-        with patch("leetcoach.telegram_bot.start_quiz", return_value=result):
+        with patch(
+            "leetcoach.app.interface.bot.handlers.start_quiz", return_value=result
+        ):
             await quiz_command(update, context)
 
         context.bot.send_chat_action.assert_awaited_once()

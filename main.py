@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from leetcoach.cli import cli
+from leetcoach.app.interface.cli.commands import cli
 
 
 if __name__ == "__main__":

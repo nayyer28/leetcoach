@@ -4,15 +4,15 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from leetcoach.dao.users_dao import (
+from leetcoach.app.infrastructure.dao.users_dao import (
     get_user_id_by_telegram_user_id,
     get_user_reminder_preferences,
     set_user_reminder_daily_max,
     set_user_reminder_hour_local,
     upsert_user,
 )
-from leetcoach.db.connection import get_connection
-from leetcoach.db.migrate import migrate_database
+from leetcoach.app.infrastructure.config.db import get_connection
+from leetcoach.app.misc.migrate import migrate_database
 
 
 class UsersDaoUnitTest(unittest.TestCase):

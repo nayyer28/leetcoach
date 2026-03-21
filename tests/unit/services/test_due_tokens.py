@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import unittest
 
-from leetcoach.services.due_tokens import DueTokenStore
+from leetcoach.app.interface.bot.token_store import DueTokenStore
 
 
 class DueTokenStoreTest(unittest.TestCase):

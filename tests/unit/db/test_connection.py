@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from leetcoach.db.connection import get_connection
+from leetcoach.app.infrastructure.config.db import get_connection
 
 
 class ConnectionUnitTest(unittest.TestCase):

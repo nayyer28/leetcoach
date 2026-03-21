@@ -5,9 +5,9 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from leetcoach.patterns import roadmap_pattern_info
-from leetcoach.services.due_tokens import ProblemToken
-from leetcoach.services.query_service import DueReviewItem
-from leetcoach.services.quiz_service import AnswerQuizResult, QuizQuestionPayload
+from leetcoach.app.application.quiz.common import AnswerQuizResult, QuizQuestionPayload
+from leetcoach.app.application.reviews.due_reviews import DueReviewItem
+from leetcoach.app.interface.bot.token_store import ProblemToken
 
 
 TELEGRAM_MESSAGE_CHUNK_SIZE = 3500

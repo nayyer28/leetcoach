@@ -7,11 +7,11 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from leetcoach.cli import cli
+from leetcoach.app.interface.cli.commands import cli
 
 
 class CliUnitTest(unittest.TestCase):
-    @patch("leetcoach.cli.subprocess.run")
+    @patch("leetcoach.app.interface.cli.commands.subprocess.run")
     def test_test_command_runs_unit_discovery(self, mock_run) -> None:
         mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
         runner = CliRunner()
@@ -34,7 +34,7 @@ class CliUnitTest(unittest.TestCase):
             check=False,
         )
 
-    @patch("leetcoach.cli.subprocess.run")
+    @patch("leetcoach.app.interface.cli.commands.subprocess.run")
     def test_test_command_runs_target_directly(self, mock_run) -> None:
         mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
         runner = CliRunner()

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import unittest
 
-from leetcoach.dao.problem_reviews_dao import _compute_due_windows
+from leetcoach.app.infrastructure.dao.problem_reviews_dao import _compute_due_windows
 
 
 class ProblemReviewsDaoUnitTest(unittest.TestCase):

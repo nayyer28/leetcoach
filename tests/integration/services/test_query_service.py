@@ -6,16 +6,16 @@ import sqlite3
 import tempfile
 import unittest
 
-from leetcoach.db.migrate import migrate_database
-from leetcoach.services.log_problem_service import LogProblemInput, log_problem
-from leetcoach.services.query_service import (
-    complete_review,
+from leetcoach.app.application.problems.browse_problems import (
     get_problem_detail,
     list_all_problems,
     list_by_pattern,
-    list_due_reviews,
     search_problems,
 )
+from leetcoach.app.misc.migrate import migrate_database
+from leetcoach.app.application.problems.log_problem import LogProblemInput, log_problem
+from leetcoach.app.application.reviews.complete_review import complete_review
+from leetcoach.app.application.reviews.due_reviews import list_due_reviews
 
 
 class QueryServiceIntegrationTest(unittest.TestCase):

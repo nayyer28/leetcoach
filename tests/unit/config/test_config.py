@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from leetcoach.config import load_config
+from leetcoach.app.infrastructure.config.app_config import load_config
 
 
 class ConfigUnitTest(unittest.TestCase):

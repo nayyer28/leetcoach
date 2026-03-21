@@ -17,7 +17,10 @@ def _user_id_or_none(db_path: str, telegram_user_id: str) -> int | None:
         return get_user_id_by_telegram_user_id(conn, telegram_user_id=telegram_user_id)
 
 
-def reveal_quiz(*, db_path: str, telegram_user_id: str, now_iso_fn) -> RevealQuizResult:
+def reveal_quiz(
+    *, db_path: str, telegram_user_id: str, now_iso_fn=None
+) -> RevealQuizResult:
+    now_iso_fn = now_iso_fn or default_now_iso
     user_id = _user_id_or_none(db_path, telegram_user_id)
     if user_id is None:
         return RevealQuizResult(status="user_not_registered")

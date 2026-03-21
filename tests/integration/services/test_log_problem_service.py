@@ -5,8 +5,8 @@ import sqlite3
 import tempfile
 import unittest
 
-from leetcoach.db.migrate import migrate_database
-from leetcoach.services.log_problem_service import LogProblemInput, log_problem
+from leetcoach.app.misc.migrate import migrate_database
+from leetcoach.app.application.problems.log_problem import LogProblemInput, log_problem
 
 
 class LogProblemServiceIntegrationTest(unittest.TestCase):

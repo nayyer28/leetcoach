@@ -4,9 +4,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from leetcoach.dao.problems_dao import upsert_problem
-from leetcoach.db.connection import get_connection
-from leetcoach.db.migrate import migrate_database
+from leetcoach.app.infrastructure.dao.problems_dao import upsert_problem
+from leetcoach.app.infrastructure.config.db import get_connection
+from leetcoach.app.misc.migrate import migrate_database
 
 
 class ProblemsDaoUnitTest(unittest.TestCase):

@@ -31,8 +31,9 @@ def answer_quiz(
     telegram_user_id: str,
     user_answer_text: str,
     provider: LLMProvider,
-    now_iso_fn,
+    now_iso_fn=None,
 ) -> AnswerQuizResult:
+    now_iso_fn = now_iso_fn or default_now_iso
     user_id = _user_id_or_none(db_path, telegram_user_id)
     if user_id is None:
         return AnswerQuizResult(status="user_not_registered")
