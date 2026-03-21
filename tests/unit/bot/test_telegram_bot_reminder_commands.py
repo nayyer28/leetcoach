@@ -183,6 +183,7 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
 
             text = update.message.reply_text.await_args.args[0]
             self.assertIn("Last Reminder Batch", text)
+            self.assertIn("[P1]", text)
             self.assertIn("Two Sum", text)
             self.assertIn("LC:", text)
             self.assertIn("NC:", text)
@@ -215,6 +216,7 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
 
             text = update.message.reply_text.await_args.args[0]
             self.assertIn("Manual Reminder", text)
+            self.assertIn("ID: P1", text)
             self.assertIn("Two Sum", text)
             with get_connection(db_path) as conn:
                 row = conn.execute(

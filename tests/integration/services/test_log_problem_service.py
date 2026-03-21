@@ -37,6 +37,9 @@ class LogProblemServiceIntegrationTest(unittest.TestCase):
             self.assertEqual(first.user_id, second.user_id)
             self.assertEqual(first.problem_id, second.problem_id)
             self.assertEqual(first.user_problem_id, second.user_problem_id)
+            self.assertEqual(first.display_id, second.display_id)
+            self.assertEqual(first.problem_ref, second.problem_ref)
+            self.assertEqual(first.problem_ref, "P1")
 
             with sqlite3.connect(db_path) as conn:
                 users_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]

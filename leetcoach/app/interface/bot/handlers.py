@@ -76,6 +76,12 @@ from leetcoach.patterns import (
     canonical_pattern_label as _canonical_pattern_label,
     normalize_pattern_key as _normalize_pattern_key,
 )
+from leetcoach.app.application.problems.edit_problem import edit_problem_field
+from leetcoach.app.application.problems.problem_refs import parse_problem_ref
+from leetcoach.app.application.problems.browse_problems import (
+    get_problem_detail_by_ref,
+    resolve_problem_id_by_ref,
+)
 from leetcoach.app.interface.bot.keyboards import (
     difficulty_inline_markup as _difficulty_inline_markup_impl,
     pattern_inline_markup as _pattern_inline_markup_impl,
@@ -103,7 +109,6 @@ from leetcoach.app.interface.bot.views import (
     unknown_command_help_text as _unknown_command_help_text,
     unknown_text_help_text as _unknown_text_help_text,
 )
-from leetcoach.app.interface.bot.token_store import DueTokenStore, ProblemToken
 
 
 LOGGER = logging.getLogger("leetcoach.telegram")
@@ -281,8 +286,7 @@ async def log_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         if not rows:
             await update.message.reply_text("🗂️ No logged problems yet.")
             return ConversationHandler.END
-        token_map = _browse_token_map(context, telegram_user_id, rows)
-        await _reply_long_text(update, _render_problem_rows(rows, token_map, cfg.timezone))
+        await _reply_long_text(update, _render_problem_rows(rows, cfg.timezone))
         return ConversationHandler.END
     await update.message.reply_text(
         _log_prompt(1, 10, "Enter problem title:"),
@@ -486,7 +490,7 @@ async def log_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             f"Difficulty: {log_input.difficulty.title()}\n"
             f"Pattern: {log_input.pattern}\n"
             f"Solved: {solved_label}\n"
-            f"ID: {result.user_problem_id}"
+            f"ID: {result.problem_ref}"
         )
     )
     context.user_data.pop("log_payload", None)
@@ -504,7 +508,6 @@ async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if cfg is None:
         return
     _interrupt_quiz_if_needed(cfg, update, context)
-    token_store: DueTokenStore = context.application.bot_data["due_tokens"]
     telegram_user_id = _telegram_user_id(update)
     items = list_due_reviews(cfg.db_path, telegram_user_id)
     if not items:
@@ -512,10 +515,7 @@ async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "✅ No outstanding reviews right now.\nUse /remind new or /list to keep going."
         )
         return
-    token_map = token_store.put(
-        telegram_user_id, [item.user_problem_id for item in items]
-    )
-    await _reply_long_text(update, _render_due(items, token_map, cfg.timezone))
+    await _reply_long_text(update, _render_due(items, cfg.timezone))
 
 
 async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -671,16 +671,6 @@ async def reminder_count_alias_command(
     await remind_command(update, context)
 
 
-def _resolve_problem_token(
-    context: ContextTypes.DEFAULT_TYPE, telegram_user_id: str, token: str
-) -> ProblemToken | None:
-    due_store: DueTokenStore = context.application.bot_data["due_tokens"]
-    browse_store: DueTokenStore = context.application.bot_data["browse_tokens"]
-    return due_store.get(telegram_user_id, token) or browse_store.get(
-        telegram_user_id, token
-    )
-
-
 async def reviewed_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
@@ -688,22 +678,27 @@ async def reviewed_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     _interrupt_quiz_if_needed(cfg, update, context)
     telegram_user_id = _telegram_user_id(update)
     if len(context.args) != 1:
-        await update.message.reply_text("Usage: /reviewed <token> (example: /reviewed A1)")
+        await update.message.reply_text("Usage: /reviewed <id> (example: /reviewed P1)")
         return
-    token = context.args[0].upper()
-    problem_ref = _resolve_problem_token(context, telegram_user_id, token)
-    if problem_ref is None:
+    display_id = parse_problem_ref(context.args[0])
+    if display_id is None:
         await update.message.reply_text(
-            "⚠️ Unknown/expired token. Run /due or /list again."
+            "⚠️ Invalid problem id. Use values like P1."
         )
         return
-    ok = complete_review(cfg.db_path, telegram_user_id, problem_ref.user_problem_id)
+    user_problem_id = resolve_problem_id_by_ref(
+        cfg.db_path, telegram_user_id, display_id
+    )
+    if user_problem_id is None:
+        await update.message.reply_text("⚠️ Unknown problem id. Run /list or /due again.")
+        return
+    ok = complete_review(cfg.db_path, telegram_user_id, user_problem_id)
     if not ok:
         await update.message.reply_text(
             "⚠️ Could not mark this problem as reviewed. Run /due or /list again."
         )
         return
-    await update.message.reply_text(f"✅ Marked reviewed: {token}")
+    await update.message.reply_text(f"✅ Marked reviewed: P{display_id}")
 
 async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg = await _ensure_authorized(update, context)
@@ -779,14 +774,6 @@ async def _reply_long_text(update: Update, text: str) -> None:
         await update.message.reply_text(chunk)
 
 
-def _browse_token_map(
-    context: ContextTypes.DEFAULT_TYPE, telegram_user_id: str, rows: list[dict[str, Any]]
-) -> dict[str, ProblemToken]:
-    token_store: DueTokenStore = context.application.bot_data["browse_tokens"]
-    user_problem_ids = [int(row["user_problem_id"]) for row in rows]
-    return token_store.put(telegram_user_id, user_problem_ids)
-
-
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
@@ -801,8 +788,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not rows:
         await update.message.reply_text("🔎 No matching problems.")
         return
-    token_map = _browse_token_map(context, telegram_user_id, rows)
-    await _reply_long_text(update, _render_problem_rows(rows, token_map, cfg.timezone))
+    await _reply_long_text(update, _render_problem_rows(rows, cfg.timezone))
 
 
 async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -819,8 +805,7 @@ async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not rows:
         await update.message.reply_text("🧠 No problems for this pattern.")
         return
-    token_map = _browse_token_map(context, telegram_user_id, rows)
-    await _reply_long_text(update, _render_problem_rows(rows, token_map, cfg.timezone))
+    await _reply_long_text(update, _render_problem_rows(rows, cfg.timezone))
 
 
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -833,8 +818,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not rows:
         await update.message.reply_text("🗂️ No logged problems yet.")
         return
-    token_map = _browse_token_map(context, telegram_user_id, rows)
-    await _reply_long_text(update, _render_problem_rows(rows, token_map, cfg.timezone))
+    await _reply_long_text(update, _render_problem_rows(rows, cfg.timezone))
 
 
 async def show_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -844,24 +828,113 @@ async def show_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     _interrupt_quiz_if_needed(cfg, update, context)
     telegram_user_id = _telegram_user_id(update)
     if not context.args:
-        await update.message.reply_text("Usage: /show <token>")
+        await update.message.reply_text("Usage: /show <id>")
         return
-    token_store: DueTokenStore = context.application.bot_data["browse_tokens"]
-    token = token_store.get(telegram_user_id, context.args[0])
-    if token is None:
+    display_id = parse_problem_ref(context.args[0])
+    if display_id is None:
         await update.message.reply_text(
-            "⚠️ Unknown/expired token. Run /list, /search, or /pattern again."
+            "⚠️ Invalid problem id. Use values like P1."
         )
         return
-    row = get_problem_detail(
-        cfg.db_path, telegram_user_id, user_problem_id=token.user_problem_id
-    )
+    row = get_problem_detail_by_ref(cfg.db_path, telegram_user_id, display_id=display_id)
     if row is None:
         await update.message.reply_text(
             "⚠️ Could not find this problem anymore. Run /list again."
         )
         return
     await _reply_long_text(update, _render_problem_detail(row, cfg.timezone))
+
+
+async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return
+    _interrupt_quiz_if_needed(cfg, update, context)
+    telegram_user_id = _telegram_user_id(update)
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "Usage: /edit <id> <field> <value>\n"
+            "Fields: title, difficulty, pattern, lc, nc, concepts, time, space, notes"
+        )
+        return
+
+    display_id = parse_problem_ref(context.args[0])
+    if display_id is None:
+        await update.message.reply_text("⚠️ Invalid problem id. Use values like P1.")
+        return
+
+    raw_field = context.args[1].strip().lower()
+    raw_value = " ".join(context.args[2:]).strip()
+    value = None if raw_value == "-" else raw_value
+
+    field_aliases = {
+        "title": "title",
+        "difficulty": "difficulty",
+        "pattern": "pattern",
+        "lc": "leetcode_slug",
+        "leetcode": "leetcode_slug",
+        "nc": "neetcode_slug",
+        "neetcode": "neetcode_slug",
+        "concepts": "concepts",
+        "time": "time_complexity",
+        "space": "space_complexity",
+        "notes": "notes",
+    }
+    field = field_aliases.get(raw_field)
+    if field is None:
+        await update.message.reply_text(
+            "⚠️ Unknown field. Use one of: title, difficulty, pattern, lc, nc, concepts, time, space, notes"
+        )
+        return
+
+    if field == "difficulty":
+        if value is None:
+            await update.message.reply_text("⚠️ Difficulty cannot be empty.")
+            return
+        normalized = _normalize_difficulty_input(value)
+        if normalized is None:
+            await update.message.reply_text("⚠️ Difficulty must be easy, medium, or hard.")
+            return
+        value = normalized
+    elif field == "pattern":
+        if value is None:
+            await update.message.reply_text("⚠️ Pattern cannot be empty.")
+            return
+        canonical = _canonical_pattern_label(value)
+        if canonical is None:
+            await update.message.reply_text("⚠️ Unknown pattern.")
+            return
+        value = canonical
+    elif field == "leetcode_slug":
+        if value is not None:
+            value = _extract_problem_slug(value, provider="leetcode")
+            if value is None:
+                await update.message.reply_text("⚠️ Invalid LeetCode URL or slug.")
+                return
+    elif field == "neetcode_slug":
+        if value is not None:
+            value = _extract_problem_slug(value, provider="neetcode")
+            if value is None:
+                await update.message.reply_text("⚠️ Invalid NeetCode URL or slug.")
+                return
+
+    result = edit_problem_field(
+        db_path=cfg.db_path,
+        telegram_user_id=telegram_user_id,
+        display_id=display_id,
+        field=field,
+        value=value,
+    )
+    if result.status == "user_not_registered":
+        await update.message.reply_text("⚠️ Please run /start first.")
+        return
+    if result.status == "not_found":
+        await update.message.reply_text("⚠️ Unknown problem id.")
+        return
+    if result.status == "invalid_field":
+        await update.message.reply_text("⚠️ Could not edit this field.")
+        return
+    await update.message.reply_text(f"✅ Updated {result.problem_ref}.")
 
 
 async def default_text_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -979,8 +1052,6 @@ def build_application(config: AppConfig) -> Application:
         .build()
     )
     app.bot_data["config"] = config
-    app.bot_data["due_tokens"] = DueTokenStore()
-    app.bot_data["browse_tokens"] = DueTokenStore()
     if config.gemini_api_key:
         app.bot_data["quiz_provider"] = GeminiProvider(
             api_key=config.gemini_api_key,
@@ -1041,6 +1112,7 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(CommandHandler("pattern", pattern_command))
     app.add_handler(CommandHandler("list", list_command))
     app.add_handler(CommandHandler("show", show_command))
+    app.add_handler(CommandHandler("edit", edit_command))
     app.add_handler(CommandHandler("quiz", quiz_command))
     app.add_handler(CommandHandler("reveal", reveal_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, default_text_command))

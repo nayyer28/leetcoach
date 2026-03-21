@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from leetcoach.app.application.problems.problem_refs import format_problem_ref
 from leetcoach.app.infrastructure.config.db import get_connection
 from leetcoach.app.infrastructure.dao.user_problems_dao import (
+    get_user_problem_detail_by_display_id,
     get_user_problem_detail,
     list_recent_user_problems,
     list_user_problems,
     list_user_problems_by_pattern,
+    resolve_user_problem_id_by_display_id,
     search_user_problems,
 )
 from leetcoach.app.infrastructure.dao.users_dao import get_user_id_by_telegram_user_id
@@ -27,6 +30,8 @@ def search_problems(db_path: str, telegram_user_id: str, query: str) -> list[dic
     return [
         {
             "user_problem_id": int(r["user_problem_id"]),
+            "display_id": int(r["display_id"]),
+            "problem_ref": format_problem_ref(int(r["display_id"])),
             "title": str(r["title"]),
             "difficulty": str(r["difficulty"]),
             "pattern": str(r["pattern"]),
@@ -51,6 +56,8 @@ def list_by_pattern(
     return [
         {
             "user_problem_id": int(r["user_problem_id"]),
+            "display_id": int(r["display_id"]),
+            "problem_ref": format_problem_ref(int(r["display_id"])),
             "title": str(r["title"]),
             "difficulty": str(r["difficulty"]),
             "pattern": str(r["pattern"]),
@@ -73,6 +80,8 @@ def list_all_problems(db_path: str, telegram_user_id: str) -> list[dict[str, str
     return [
         {
             "user_problem_id": int(r["user_problem_id"]),
+            "display_id": int(r["display_id"]),
+            "problem_ref": format_problem_ref(int(r["display_id"])),
             "title": str(r["title"]),
             "difficulty": str(r["difficulty"]),
             "pattern": str(r["pattern"]),
@@ -97,6 +106,8 @@ def list_recent_problems(
     return [
         {
             "user_problem_id": int(r["user_problem_id"]),
+            "display_id": int(r["display_id"]),
+            "problem_ref": format_problem_ref(int(r["display_id"])),
             "title": str(r["title"]),
             "difficulty": str(r["difficulty"]),
             "pattern": str(r["pattern"]),
@@ -124,6 +135,8 @@ def get_problem_detail(
         return None
     return {
         "user_problem_id": str(row["user_problem_id"]),
+        "display_id": int(row["display_id"]),
+        "problem_ref": format_problem_ref(int(row["display_id"])),
         "title": str(row["title"]),
         "difficulty": str(row["difficulty"]),
         "pattern": str(row["pattern"]),
@@ -141,3 +154,55 @@ def get_problem_detail(
         "created_at": str(row["created_at"]),
         "updated_at": str(row["updated_at"]),
     }
+
+
+def get_problem_detail_by_ref(
+    db_path: str, telegram_user_id: str, display_id: int
+) -> dict[str, str] | None:
+    with get_connection(db_path) as conn:
+        user_id = get_user_id_by_telegram_user_id(
+            conn, telegram_user_id=telegram_user_id
+        )
+        if user_id is None:
+            return None
+        row = get_user_problem_detail_by_display_id(
+            conn, user_id=user_id, display_id=display_id
+        )
+    if row is None:
+        return None
+    return {
+        "user_problem_id": str(row["user_problem_id"]),
+        "display_id": int(row["display_id"]),
+        "problem_ref": format_problem_ref(int(row["display_id"])),
+        "problem_id": int(row["problem_id"]),
+        "title": str(row["title"]),
+        "difficulty": str(row["difficulty"]),
+        "pattern": str(row["pattern"]),
+        "solved_at": str(row["solved_at"]),
+        "leetcode_slug": str(row["leetcode_slug"]) if row["leetcode_slug"] else "",
+        "neetcode_slug": str(row["neetcode_slug"]) if row["neetcode_slug"] else "",
+        "concepts": str(row["concepts"]) if row["concepts"] else "",
+        "time_complexity": (
+            str(row["time_complexity"]) if row["time_complexity"] else ""
+        ),
+        "space_complexity": (
+            str(row["space_complexity"]) if row["space_complexity"] else ""
+        ),
+        "notes": str(row["notes"]) if row["notes"] else "",
+        "created_at": str(row["created_at"]),
+        "updated_at": str(row["updated_at"]),
+    }
+
+
+def resolve_problem_id_by_ref(
+    db_path: str, telegram_user_id: str, display_id: int
+) -> int | None:
+    with get_connection(db_path) as conn:
+        user_id = get_user_id_by_telegram_user_id(
+            conn, telegram_user_id=telegram_user_id
+        )
+        if user_id is None:
+            return None
+        return resolve_user_problem_id_by_display_id(
+            conn, user_id=user_id, display_id=display_id
+        )

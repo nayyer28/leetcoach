@@ -8,12 +8,15 @@ import unittest
 
 from leetcoach.app.application.problems.browse_problems import (
     get_problem_detail,
+    get_problem_detail_by_ref,
     list_all_problems,
     list_by_pattern,
+    resolve_problem_id_by_ref,
     search_problems,
 )
 from leetcoach.app.misc.migrate import migrate_database
 from leetcoach.app.application.problems.log_problem import LogProblemInput, log_problem
+from leetcoach.app.application.problems.edit_problem import edit_problem_field
 from leetcoach.app.application.reviews.complete_review import complete_review
 from leetcoach.app.application.reviews.due_reviews import list_due_reviews
 
@@ -111,6 +114,52 @@ class QueryServiceIntegrationTest(unittest.TestCase):
 
             unknown_user_due = list_due_reviews(str(db_path), "u-missing")
             self.assertEqual(unknown_user_due, [])
+
+    def test_stable_problem_ref_can_show_review_and_edit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "leetcoach-test.db"
+            migrate_database(str(db_path))
+
+            result = log_problem(
+                str(db_path),
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="Europe/Berlin",
+                    title="Maximum Depth of Binary Tree",
+                    difficulty="easy",
+                    leetcode_slug=None,
+                    neetcode_slug="max-depth-of-binary-tree",
+                    pattern="trees",
+                    solved_at="2026-03-01T10:00:00+00:00",
+                    notes="tree depth notes",
+                ),
+            )
+
+            self.assertEqual(result.problem_ref, "P1")
+
+            resolved_id = resolve_problem_id_by_ref(str(db_path), "u-1", 1)
+            self.assertEqual(resolved_id, result.user_problem_id)
+
+            detail = get_problem_detail_by_ref(str(db_path), "u-1", 1)
+            self.assertIsNotNone(detail)
+            self.assertEqual(detail["problem_ref"], "P1")
+            self.assertEqual(detail["leetcode_slug"], "")
+
+            edited = edit_problem_field(
+                db_path=str(db_path),
+                telegram_user_id="u-1",
+                display_id=1,
+                field="leetcode_slug",
+                value="maximum-depth-of-binary-tree",
+            )
+            self.assertEqual(edited.status, "ok")
+
+            detail_after = get_problem_detail_by_ref(str(db_path), "u-1", 1)
+            self.assertIsNotNone(detail_after)
+            self.assertEqual(
+                detail_after["leetcode_slug"], "maximum-depth-of-binary-tree"
+            )
 
     def test_due_only_returns_outstanding_requested_items(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
