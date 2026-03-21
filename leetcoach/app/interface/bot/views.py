@@ -100,7 +100,7 @@ def commands_help_text() -> str:
         "• /search &lt;text&gt;\n\n"
         "🔍 <b>Details</b>\n"
         "• /show P1\n"
-        "• /edit P1 lc &lt;slug-or-url&gt;\n\n"
+        "• /edit P1\n\n"
         "👤 <b>Registration</b>\n"
         "• /register\n\n"
         "ℹ️ <b>Help</b>\n"
@@ -122,7 +122,7 @@ def unknown_text_help_text() -> str:
         "• /search <text>\n"
         "• /pattern <name>\n"
         "• /show <id>\n"
-        "• /edit <id> <field> <value>\n"
+        "• /edit <id>\n"
         "• /quiz [topic]\n"
         "• /reveal"
     )
@@ -141,7 +141,7 @@ def unknown_command_help_text(command_text: str) -> str:
         "• /search <text>\n"
         "• /pattern <name>\n"
         "• /show <id>\n"
-        "• /edit <id> <field> <value>\n"
+        "• /edit <id>\n"
         "• /quiz [topic]\n"
         "• /reveal"
     )
@@ -178,6 +178,15 @@ def render_log_review(payload: dict[str, str | None], timezone_name: str) -> str
 def render_log_edit_prompt(field_label: str, current_value: str | None) -> str:
     return (
         f"✏️ Editing {field_label}\n"
+        f"Current value:\n{_display_optional_value(current_value)}\n\n"
+        "Send the new value now.\n"
+        "Use '-' to clear optional text fields."
+    )
+
+
+def render_edit_prompt(problem_ref: str, field_label: str, current_value: str | None) -> str:
+    return (
+        f"✏️ Editing {problem_ref} · {field_label}\n"
         f"Current value:\n{_display_optional_value(current_value)}\n\n"
         "Send the new value now.\n"
         "Use '-' to clear optional text fields."
