@@ -100,7 +100,7 @@ def commands_help_text() -> str:
         "• /search &lt;text&gt;\n\n"
         "🔍 <b>Details</b>\n"
         "• /show P1\n"
-        "• /edit P1 lc <slug-or-url>\n\n"
+        "• /edit P1 lc &lt;slug-or-url&gt;\n\n"
         "👤 <b>Registration</b>\n"
         "• /register\n\n"
         "ℹ️ <b>Help</b>\n"
