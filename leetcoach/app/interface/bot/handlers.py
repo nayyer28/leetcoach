@@ -101,6 +101,7 @@ from leetcoach.app.interface.bot.views import (
     normalize_solved_at as _normalize_solved_at,
     remind_usage_text as _remind_usage_text,
     render_due as _render_due,
+    render_edit_prompt as _render_edit_prompt,
     render_log_edit_prompt as _render_log_edit_prompt,
     render_log_review as _render_log_review,
     render_last_batch as _render_last_batch_impl,
@@ -125,6 +126,9 @@ LOG_REVIEW_CALLBACK_PREFIX = "log:review:"
 LOG_EDIT_FIELD_CALLBACK_PREFIX = "log:editfield:"
 LOG_EDIT_DIFFICULTY_CALLBACK_PREFIX = "log:editdifficulty:"
 LOG_EDIT_PATTERN_CALLBACK_PREFIX = "log:editpattern:"
+EDIT_FIELD_CALLBACK_PREFIX = "edit:field:"
+EDIT_DIFFICULTY_CALLBACK_PREFIX = "edit:difficulty:"
+EDIT_PATTERN_CALLBACK_PREFIX = "edit:pattern:"
 
 (
     LOG_TITLE,
@@ -142,7 +146,11 @@ LOG_EDIT_PATTERN_CALLBACK_PREFIX = "log:editpattern:"
     LOG_EDIT_TEXT,
     LOG_EDIT_DIFFICULTY,
     LOG_EDIT_PATTERN,
-) = range(15)
+    EDIT_FIELD,
+    EDIT_TEXT,
+    EDIT_DIFFICULTY,
+    EDIT_PATTERN,
+) = range(19)
 
 def _clear_quiz_prompt_state(context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data.pop("quiz_unknown_topic", None)
@@ -199,6 +207,21 @@ def _log_edit_pattern_inline_markup() -> InlineKeyboardMarkup:
     return _pattern_inline_markup_impl(callback_prefix=LOG_EDIT_PATTERN_CALLBACK_PREFIX)
 
 
+def _edit_field_markup() -> InlineKeyboardMarkup:
+    return _log_edit_field_markup_impl(callback_prefix=EDIT_FIELD_CALLBACK_PREFIX)
+
+
+def _edit_difficulty_inline_markup() -> InlineKeyboardMarkup:
+    return _difficulty_inline_markup_impl(
+        difficulty_options=DIFFICULTY_OPTIONS,
+        callback_prefix=EDIT_DIFFICULTY_CALLBACK_PREFIX,
+    )
+
+
+def _edit_pattern_inline_markup() -> InlineKeyboardMarkup:
+    return _pattern_inline_markup_impl(callback_prefix=EDIT_PATTERN_CALLBACK_PREFIX)
+
+
 def _log_field_label(field: str) -> str:
     labels = {
         "title": "Title",
@@ -212,6 +235,10 @@ def _log_field_label(field: str) -> str:
         "notes": "Notes",
     }
     return labels[field]
+
+
+def _field_label(field: str) -> str:
+    return _log_field_label(field)
 
 
 def _log_field_current_value(payload: dict[str, Any], field: str) -> str | None:
@@ -276,6 +303,84 @@ async def _prompt_log_edit_field(
         reply_markup=ReplyKeyboardRemove(),
     )
     return LOG_EDIT_TEXT
+
+
+async def _prompt_problem_edit_field(
+    target: Any, context: ContextTypes.DEFAULT_TYPE, field: str
+) -> int:
+    detail: dict[str, Any] | None = context.user_data.get("edit_problem_detail")
+    if detail is None:
+        await target.reply_text("⚠️ Edit session expired. Run /edit <id> again.")
+        return ConversationHandler.END
+
+    context.user_data["edit_problem_field"] = field
+    if field == "difficulty":
+        await target.reply_text(
+            f"✏️ Editing {detail['problem_ref']} · {_field_label(field)}\nChoose the new difficulty.",
+            reply_markup=_edit_difficulty_inline_markup(),
+        )
+        return EDIT_DIFFICULTY
+    if field == "pattern":
+        await target.reply_text(
+            f"✏️ Editing {detail['problem_ref']} · {_field_label(field)}\nChoose the new pattern.",
+            reply_markup=_edit_pattern_inline_markup(),
+        )
+        return EDIT_PATTERN
+
+    await target.reply_text(
+        _render_edit_prompt(
+            detail["problem_ref"],
+            _field_label(field),
+            _log_field_current_value(detail, field),
+        ),
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    return EDIT_TEXT
+
+
+def _clear_problem_edit_session(context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data.pop("edit_problem_detail", None)
+    context.user_data.pop("edit_problem_field", None)
+
+
+async def _apply_problem_edit(
+    *,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    cfg: AppConfig,
+    field: str,
+    value: str | None,
+) -> int:
+    detail: dict[str, Any] | None = context.user_data.get("edit_problem_detail")
+    if detail is None:
+        await update.effective_message.reply_text(
+            "⚠️ Edit session expired. Run /edit <id> again."
+        )
+        return ConversationHandler.END
+
+    result = edit_problem_field(
+        db_path=cfg.db_path,
+        telegram_user_id=_telegram_user_id(update),
+        display_id=int(detail["display_id"]),
+        field=field,
+        value=value,
+    )
+    if result.status == "user_not_registered":
+        _clear_problem_edit_session(context)
+        await update.effective_message.reply_text("⚠️ Please run /start first.")
+        return ConversationHandler.END
+    if result.status == "not_found":
+        _clear_problem_edit_session(context)
+        await update.effective_message.reply_text("⚠️ Unknown problem id.")
+        return ConversationHandler.END
+    if result.status == "invalid_field":
+        _clear_problem_edit_session(context)
+        await update.effective_message.reply_text("⚠️ Could not edit this field.")
+        return ConversationHandler.END
+
+    _clear_problem_edit_session(context)
+    await update.effective_message.reply_text(f"✅ Updated {result.problem_ref}.")
+    return ConversationHandler.END
 
 
 def _telegram_user_id(update: Update) -> str:
@@ -1049,96 +1154,131 @@ async def show_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await _reply_long_text(update, _render_problem_detail(row, cfg.timezone))
 
 
-async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
-        return
+        return ConversationHandler.END
     _interrupt_quiz_if_needed(cfg, update, context)
     telegram_user_id = _telegram_user_id(update)
-    if len(context.args) < 3:
-        await update.message.reply_text(
-            "Usage: /edit <id> <field> <value>\n"
-            "Fields: title, difficulty, pattern, lc, nc, concepts, time, space, notes"
-        )
-        return
+    if len(context.args) != 1:
+        await update.message.reply_text("Usage: /edit <id>")
+        return ConversationHandler.END
 
     display_id = parse_problem_ref(context.args[0])
     if display_id is None:
         await update.message.reply_text("⚠️ Invalid problem id. Use values like P1.")
-        return
+        return ConversationHandler.END
 
-    raw_field = context.args[1].strip().lower()
-    raw_value = " ".join(context.args[2:]).strip()
+    row = get_problem_detail_by_ref(cfg.db_path, telegram_user_id, display_id=display_id)
+    if row is None:
+        await update.message.reply_text("⚠️ Unknown problem id.")
+        return ConversationHandler.END
+
+    context.user_data["edit_problem_detail"] = dict(row)
+    context.user_data.pop("edit_problem_field", None)
+    await update.message.reply_text(
+        f"✏️ Editing {row['problem_ref']} · What do you want to change?",
+        reply_markup=_edit_field_markup(),
+    )
+    return EDIT_FIELD
+
+
+async def edit_field_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_reply_markup(reply_markup=None)
+    field = query.data.removeprefix(EDIT_FIELD_CALLBACK_PREFIX)
+    return await _prompt_problem_edit_field(query.message, context, field)
+
+
+async def edit_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return ConversationHandler.END
+
+    field = context.user_data.get("edit_problem_field")
+    if field is None:
+        await update.message.reply_text("⚠️ Edit session expired. Run /edit <id> again.")
+        return ConversationHandler.END
+
+    raw_value = update.message.text.strip()
     value = None if raw_value == "-" else raw_value
 
-    field_aliases = {
-        "title": "title",
-        "difficulty": "difficulty",
-        "pattern": "pattern",
-        "lc": "leetcode_slug",
-        "leetcode": "leetcode_slug",
-        "nc": "neetcode_slug",
-        "neetcode": "neetcode_slug",
-        "concepts": "concepts",
-        "time": "time_complexity",
-        "space": "space_complexity",
-        "notes": "notes",
-    }
-    field = field_aliases.get(raw_field)
-    if field is None:
-        await update.message.reply_text(
-            "⚠️ Unknown field. Use one of: title, difficulty, pattern, lc, nc, concepts, time, space, notes"
-        )
-        return
-
-    if field == "difficulty":
-        if value is None:
-            await update.message.reply_text("⚠️ Difficulty cannot be empty.")
-            return
-        normalized = _normalize_difficulty_input(value)
-        if normalized is None:
-            await update.message.reply_text("⚠️ Difficulty must be easy, medium, or hard.")
-            return
-        value = normalized
-    elif field == "pattern":
-        if value is None:
-            await update.message.reply_text("⚠️ Pattern cannot be empty.")
-            return
-        canonical = _canonical_pattern_label(value)
-        if canonical is None:
-            await update.message.reply_text("⚠️ Unknown pattern.")
-            return
-        value = canonical
+    if field == "title":
+        if value is None or not value.strip():
+            await update.message.reply_text("⚠️ Title cannot be empty.")
+            return EDIT_TEXT
+        value = value.strip()
     elif field == "leetcode_slug":
         if value is not None:
             value = _extract_problem_slug(value, provider="leetcode")
             if value is None:
-                await update.message.reply_text("⚠️ Invalid LeetCode URL or slug.")
-                return
+                await update.message.reply_text("⚠️ Invalid LeetCode URL.")
+                return EDIT_TEXT
     elif field == "neetcode_slug":
         if value is not None:
             value = _extract_problem_slug(value, provider="neetcode")
             if value is None:
-                await update.message.reply_text("⚠️ Invalid NeetCode URL or slug.")
-                return
+                await update.message.reply_text("⚠️ Invalid NeetCode URL.")
+                return EDIT_TEXT
 
-    result = edit_problem_field(
-        db_path=cfg.db_path,
-        telegram_user_id=telegram_user_id,
-        display_id=display_id,
+    return await _apply_problem_edit(
+        update=update,
+        context=context,
+        cfg=cfg,
         field=field,
         value=value,
     )
-    if result.status == "user_not_registered":
-        await update.message.reply_text("⚠️ Please run /start first.")
-        return
-    if result.status == "not_found":
-        await update.message.reply_text("⚠️ Unknown problem id.")
-        return
-    if result.status == "invalid_field":
-        await update.message.reply_text("⚠️ Could not edit this field.")
-        return
-    await update.message.reply_text(f"✅ Updated {result.problem_ref}.")
+
+
+async def edit_difficulty_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return ConversationHandler.END
+
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_reply_markup(reply_markup=None)
+    value = query.data.removeprefix(EDIT_DIFFICULTY_CALLBACK_PREFIX)
+    return await _apply_problem_edit(
+        update=update,
+        context=context,
+        cfg=cfg,
+        field="difficulty",
+        value=value,
+    )
+
+
+async def edit_pattern_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    cfg = await _ensure_authorized(update, context)
+    if cfg is None:
+        return ConversationHandler.END
+
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_reply_markup(reply_markup=None)
+    normalized = query.data.removeprefix(EDIT_PATTERN_CALLBACK_PREFIX)
+    label = _canonical_pattern_label(normalized)
+    if label is None:
+        await query.message.reply_text("⚠️ Unknown pattern.")
+        return EDIT_PATTERN
+    return await _apply_problem_edit(
+        update=update,
+        context=context,
+        cfg=cfg,
+        field="pattern",
+        value=label,
+    )
+
+
+async def edit_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    _clear_problem_edit_session(context)
+    await update.message.reply_text("✋ Edit cancelled.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
 
 
 async def default_text_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1327,10 +1467,37 @@ def build_application(config: AppConfig) -> Application:
         fallbacks=[CommandHandler("cancel", log_cancel)],
     )
 
+    edit_flow = ConversationHandler(
+        entry_points=[CommandHandler("edit", edit_command)],
+        states={
+            EDIT_FIELD: [
+                CallbackQueryHandler(
+                    edit_field_callback,
+                    pattern=rf"^{EDIT_FIELD_CALLBACK_PREFIX}",
+                )
+            ],
+            EDIT_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_text)],
+            EDIT_DIFFICULTY: [
+                CallbackQueryHandler(
+                    edit_difficulty_callback,
+                    pattern=rf"^{EDIT_DIFFICULTY_CALLBACK_PREFIX}",
+                )
+            ],
+            EDIT_PATTERN: [
+                CallbackQueryHandler(
+                    edit_pattern_callback,
+                    pattern=rf"^{EDIT_PATTERN_CALLBACK_PREFIX}",
+                )
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", edit_cancel)],
+    )
+
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("register", register_command))
     app.add_handler(CommandHandler(["help", "hi"], help_command))
     app.add_handler(log_flow)
+    app.add_handler(edit_flow)
     app.add_handler(CommandHandler("due", due_command))
     app.add_handler(CommandHandler(["remind", "reminder"], remind_command))
     app.add_handler(
@@ -1341,7 +1508,6 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(CommandHandler("pattern", pattern_command))
     app.add_handler(CommandHandler("list", list_command))
     app.add_handler(CommandHandler("show", show_command))
-    app.add_handler(CommandHandler("edit", edit_command))
     app.add_handler(CommandHandler("quiz", quiz_command))
     app.add_handler(CommandHandler("reveal", reveal_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, default_text_command))

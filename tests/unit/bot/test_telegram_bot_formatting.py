@@ -144,6 +144,11 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         )
         self.assertIsNone(_extract_problem_slug("not a slug", provider="leetcode"))
 
+    def test_commands_help_text_uses_guided_edit_syntax(self) -> None:
+        help_text = _commands_help_text()
+        self.assertIn("• /edit P1", help_text)
+        self.assertNotIn("/edit P1 lc", help_text)
+
     def test_user_allowlist_behavior(self) -> None:
         open_cfg = AppConfig(
             environment="development",
@@ -426,7 +431,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
 
     def test_commands_help_text_escapes_html_placeholders(self) -> None:
         text = _commands_help_text()
-        self.assertIn("&lt;slug-or-url&gt;", text)
+        self.assertIn("&lt;topic&gt;", text)
+        self.assertIn("&lt;text&gt;", text)
 
     def test_parse_log_show_limit(self) -> None:
         self.assertIsNone(_parse_log_show_limit([]))
