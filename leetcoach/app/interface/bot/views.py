@@ -104,7 +104,6 @@ def commands_help_text() -> str:
         "👤 <b>Registration</b>\n"
         "• /register\n\n"
         "ℹ️ <b>Help</b>\n"
-        "• /help\n"
         "• /hi"
     )
 
@@ -113,7 +112,7 @@ def unknown_text_help_text() -> str:
     return (
         "🤔 I didn’t understand that.\n\n"
         "Try one of these commands:\n"
-        "• /help\n"
+        "• /hi\n"
         "• /log\n"
         "• /due\n"
         "• /remind\n"
@@ -132,7 +131,7 @@ def unknown_command_help_text(command_text: str) -> str:
     return (
         f"🤔 I don’t recognize `{command_text}`.\n\n"
         "Try one of these commands:\n"
-        "• /help\n"
+        "• /hi\n"
         "• /log\n"
         "• /due\n"
         "• /remind\n"

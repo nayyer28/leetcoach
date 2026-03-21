@@ -1495,7 +1495,7 @@ def build_application(config: AppConfig) -> Application:
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("register", register_command))
-    app.add_handler(CommandHandler(["help", "hi"], help_command))
+    app.add_handler(CommandHandler("hi", help_command))
     app.add_handler(log_flow)
     app.add_handler(edit_flow)
     app.add_handler(CommandHandler("due", due_command))
