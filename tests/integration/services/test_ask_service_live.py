@@ -171,6 +171,57 @@ class AskServiceLiveIntegrationTest(unittest.TestCase):
             self.assertEqual(len(result.tool_executions[0].result["reviews"]), 1)
             self.assertIn("due", result.answer.lower())
 
+    def test_live_ask_can_fetch_last_reminder_batch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+
+            log_problem(
+                db_path,
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="Europe/Berlin",
+                    title="Maximum Depth of Binary Tree",
+                    difficulty="easy",
+                    leetcode_slug="maximum-depth-of-binary-tree",
+                    neetcode_slug="max-depth-of-binary-tree",
+                    pattern="tree dfs",
+                    solved_at="2026-03-01T08:00:00+00:00",
+                ),
+            )
+            requested_at = datetime.now(UTC).isoformat()
+            with sqlite3.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    UPDATE user_problems
+                    SET last_review_requested_at = ?
+                    WHERE user_id = (SELECT id FROM users WHERE telegram_user_id = ?)
+                    """,
+                    (requested_at, "u-1"),
+                )
+                conn.commit()
+
+            try:
+                result = ask_question(
+                    db_path=db_path,
+                    telegram_user_id="u-1",
+                    question="What did you remind me last?",
+                    provider=self.provider,
+                )
+            except GeminiAllModelsFailed as exc:
+                if "network error" in str(exc).lower():
+                    self.skipTest(f"Live ask test skipped due to network issue: {exc}")
+                raise
+
+            self.assertTrue(result.answer.strip())
+            self.assertGreaterEqual(len(result.tool_executions), 1)
+            self.assertEqual(
+                result.tool_executions[0].tool_name, "get_last_reminder_batch"
+            )
+            self.assertEqual(len(result.tool_executions[0].result["reviews"]), 1)
+            self.assertIn("reminder", result.answer.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

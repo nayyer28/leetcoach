@@ -268,6 +268,86 @@ class AskServiceUnitTest(unittest.TestCase):
         self.assertEqual(result.tool_executions[0].tool_name, "get_due_reviews")
         self.assertEqual(len(result.tool_executions[0].result["reviews"]), 2)
 
+    def test_ask_question_can_fetch_last_reminder_batch(self) -> None:
+        responses = iter(
+            [
+                """{
+                  "type": "tool_call",
+                  "tool_name": "get_last_reminder_batch",
+                  "arguments": {
+                    "limit": 5
+                  }
+                }""",
+                """{
+                  "type": "final_answer",
+                  "answer": "Your last reminder batch had 2 problems."
+                }""",
+            ]
+        )
+
+        def transport(model: str, prompt: str) -> str:
+            return next(responses)
+
+        provider = GeminiProvider(
+            api_key="dummy",
+            model_priority=("gemini-2.5-flash-lite",),
+            transport=transport,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            log_problem(
+                db_path,
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="Europe/Berlin",
+                    title="Maximum Depth of Binary Tree",
+                    difficulty="easy",
+                    leetcode_slug="maximum-depth-of-binary-tree",
+                    neetcode_slug="max-depth-of-binary-tree",
+                    pattern="tree dfs",
+                    solved_at="2026-03-01T08:00:00+00:00",
+                ),
+            )
+            log_problem(
+                db_path,
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="Europe/Berlin",
+                    title="Contains Duplicate",
+                    difficulty="easy",
+                    leetcode_slug="contains-duplicate",
+                    neetcode_slug="contains-duplicate",
+                    pattern="arrays and hashing",
+                    solved_at="2026-03-02T08:00:00+00:00",
+                ),
+            )
+            requested_at = datetime.now(UTC).isoformat()
+            with sqlite3.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    UPDATE user_problems
+                    SET last_review_requested_at = ?
+                    WHERE user_id = (SELECT id FROM users WHERE telegram_user_id = ?)
+                    """,
+                    (requested_at, "u-1"),
+                )
+                conn.commit()
+
+            result = ask_question(
+                db_path=db_path,
+                telegram_user_id="u-1",
+                question="What did you remind me last?",
+                provider=provider,
+            )
+
+        self.assertEqual(result.answer, "Your last reminder batch had 2 problems.")
+        self.assertEqual(result.tool_executions[0].tool_name, "get_last_reminder_batch")
+        self.assertEqual(len(result.tool_executions[0].result["reviews"]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
