@@ -81,6 +81,46 @@ class AskServiceLiveIntegrationTest(unittest.TestCase):
             self.assertEqual(result.tool_executions[0].result["rows"][0]["value"], 1)
             self.assertIn("1", result.answer)
 
+    def test_live_ask_can_fetch_problem_detail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+
+            log_problem(
+                db_path,
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="Europe/Berlin",
+                    title="Maximum Depth of Binary Tree",
+                    difficulty="easy",
+                    leetcode_slug="maximum-depth-of-binary-tree",
+                    neetcode_slug="max-depth-of-binary-tree",
+                    pattern="tree dfs",
+                    solved_at="2026-03-01T08:00:00+00:00",
+                ),
+            )
+
+            try:
+                result = ask_question(
+                    db_path=db_path,
+                    telegram_user_id="u-1",
+                    question="Show problem P1",
+                    provider=self.provider,
+                )
+            except GeminiAllModelsFailed as exc:
+                if "network error" in str(exc).lower():
+                    self.skipTest(f"Live ask test skipped due to network issue: {exc}")
+                raise
+
+            self.assertTrue(result.answer.strip())
+            self.assertGreaterEqual(len(result.tool_executions), 1)
+            self.assertEqual(result.tool_executions[0].tool_name, "get_problem_detail")
+            self.assertEqual(
+                result.tool_executions[0].result["problem"]["problem_ref"], "P1"
+            )
+            self.assertIn("Maximum Depth", result.answer)
+
 
 if __name__ == "__main__":
     unittest.main()
