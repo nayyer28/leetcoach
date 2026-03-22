@@ -11,6 +11,14 @@ from leetcoach.app.application.analytics.aggregate_user_problems import (
     aggregate_user_problems,
     aggregate_user_problems_tool_definition,
 )
+from leetcoach.app.application.ask.problem_tools import (
+    execute_get_problem_detail,
+    execute_list_user_problems,
+    execute_search_user_problems,
+    get_problem_detail_tool_definition,
+    list_user_problems_tool_definition,
+    search_user_problems_tool_definition,
+)
 from leetcoach.app.infrastructure.llm.gemini_provider import (
     GeminiGenerateResult,
     GeminiProvider,
@@ -78,12 +86,56 @@ def _serialize_aggregate_result(result: AggregateUserProblemsResult) -> dict[str
     }
 
 
+def _tool_definitions() -> list[dict[str, Any]]:
+    return [
+        aggregate_user_problems_tool_definition(),
+        get_problem_detail_tool_definition(),
+        list_user_problems_tool_definition(),
+        search_user_problems_tool_definition(),
+    ]
+
+
+def _execute_tool(
+    *,
+    tool_name: str,
+    arguments: dict[str, Any],
+    db_path: str,
+    telegram_user_id: str,
+) -> dict[str, Any]:
+    if tool_name == "aggregate_user_problems":
+        request = _build_request(arguments)
+        tool_result = aggregate_user_problems(
+            db_path=db_path,
+            telegram_user_id=telegram_user_id,
+            request=request,
+        )
+        return _serialize_aggregate_result(tool_result)
+    if tool_name == "get_problem_detail":
+        return execute_get_problem_detail(
+            db_path=db_path,
+            telegram_user_id=telegram_user_id,
+            arguments=arguments,
+        )
+    if tool_name == "list_user_problems":
+        return execute_list_user_problems(
+            db_path=db_path,
+            telegram_user_id=telegram_user_id,
+            arguments=arguments,
+        )
+    if tool_name == "search_user_problems":
+        return execute_search_user_problems(
+            db_path=db_path,
+            telegram_user_id=telegram_user_id,
+            arguments=arguments,
+        )
+    raise ValueError("unsupported tool_name from LLM")
+
+
 def _build_prompt(
     *,
     question: str,
     tool_executions: list[AskToolExecution],
 ) -> str:
-    tool_definition = aggregate_user_problems_tool_definition()
     transcript = [
         {
             "tool_name": execution.tool_name,
@@ -96,12 +148,18 @@ def _build_prompt(
         "You are a read-only analytics assistant for a LeetCode tracking app.\n"
         "You must return JSON only, no markdown and no prose outside JSON.\n"
         "Choose exactly one of these response shapes:\n"
-        '{"type":"tool_call","tool_name":"aggregate_user_problems","arguments":{...}}\n'
+        '{"type":"tool_call","tool_name":"<tool_name>","arguments":{...}}\n'
         '{"type":"final_answer","answer":"..."}\n'
         "Use the tool when data lookup or aggregation is needed.\n"
         "Do not invent results.\n"
-        "Available tool definition:\n"
-        f"{json.dumps(tool_definition, ensure_ascii=True)}\n"
+        "Useful examples:\n"
+        '- "show P1" -> get_problem_detail\n'
+        '- "list my latest 5 problems" -> list_user_problems\n'
+        '- "show my tree problems" -> list_user_problems\n'
+        '- "search for two sum" -> search_user_problems\n'
+        '- "how many easy problems have I solved in Trees?" -> aggregate_user_problems\n'
+        "Available tool definitions:\n"
+        f"{json.dumps(_tool_definitions(), ensure_ascii=True)}\n"
         "Previous tool executions:\n"
         f"{json.dumps(transcript, ensure_ascii=True)}\n"
         "User question:\n"
@@ -140,22 +198,21 @@ def ask_question(
         if response_type == "tool_call":
             tool_name = payload.get("tool_name")
             arguments = payload.get("arguments")
-            if tool_name != "aggregate_user_problems":
-                raise ValueError("unsupported tool_name from LLM")
+            if not isinstance(tool_name, str) or not tool_name.strip():
+                raise ValueError("tool_call must include a non-empty tool_name")
             if not isinstance(arguments, dict):
                 raise ValueError("tool_call arguments must be an object")
-
-            request = _build_request(arguments)
-            tool_result = aggregate_user_problems(
+            tool_result = _execute_tool(
+                tool_name=tool_name,
+                arguments=arguments,
                 db_path=db_path,
                 telegram_user_id=telegram_user_id,
-                request=request,
             )
             tool_executions.append(
                 AskToolExecution(
                     tool_name=tool_name,
                     arguments=arguments,
-                    result=_serialize_aggregate_result(tool_result),
+                    result=tool_result,
                 )
             )
             continue
