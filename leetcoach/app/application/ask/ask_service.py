@@ -21,7 +21,9 @@ from leetcoach.app.application.ask.problem_tools import (
 )
 from leetcoach.app.application.ask.review_tools import (
     execute_get_due_reviews,
+    execute_get_last_reminder_batch,
     get_due_reviews_tool_definition,
+    get_last_reminder_batch_tool_definition,
 )
 from leetcoach.app.infrastructure.llm.gemini_provider import (
     GeminiGenerateResult,
@@ -97,6 +99,7 @@ def _tool_definitions() -> list[dict[str, Any]]:
         list_user_problems_tool_definition(),
         search_user_problems_tool_definition(),
         get_due_reviews_tool_definition(),
+        get_last_reminder_batch_tool_definition(),
     ]
 
 
@@ -139,6 +142,12 @@ def _execute_tool(
             telegram_user_id=telegram_user_id,
             arguments=arguments,
         )
+    if tool_name == "get_last_reminder_batch":
+        return execute_get_last_reminder_batch(
+            db_path=db_path,
+            telegram_user_id=telegram_user_id,
+            arguments=arguments,
+        )
     raise ValueError("unsupported tool_name from LLM")
 
 
@@ -169,6 +178,7 @@ def _build_prompt(
         '- "show my tree problems" -> list_user_problems\n'
         '- "search for two sum" -> search_user_problems\n'
         '- "what is due?" -> get_due_reviews\n'
+        '- "what did you remind me last?" -> get_last_reminder_batch\n'
         '- "how many easy problems have I solved in Trees?" -> aggregate_user_problems\n'
         "Available tool definitions:\n"
         f"{json.dumps(_tool_definitions(), ensure_ascii=True)}\n"
