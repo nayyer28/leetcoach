@@ -27,8 +27,8 @@ class QueryServiceIntegrationTest(unittest.TestCase):
             db_path = Path(tmp) / "leetcoach-test.db"
             migrate_database(str(db_path))
 
-            old = datetime.now(UTC) - timedelta(days=30)
-            recent = datetime.now(UTC) - timedelta(days=1)
+            old = datetime(2026, 2, 1, 8, 0, tzinfo=UTC)
+            recent = datetime(2026, 2, 28, 8, 0, tzinfo=UTC)
 
             log_problem(
                 str(db_path),
@@ -61,8 +61,8 @@ class QueryServiceIntegrationTest(unittest.TestCase):
                     pattern="sliding-window",
                     solved_at=recent.isoformat(),
                     concepts="deque monotonic queue",
-                    time_complexity=None,
-                    space_complexity=None,
+                    time_complexity="O(n)",
+                    space_complexity="O(k)",
                     notes="deque notes",
                 ),
             )
@@ -107,6 +107,24 @@ class QueryServiceIntegrationTest(unittest.TestCase):
             search_rows = search_problems(str(db_path), "u-1", "deque")
             self.assertEqual(len(search_rows), 1)
             self.assertEqual(search_rows[0]["title"], "Sliding Window Maximum")
+
+            complexity_rows = search_problems(str(db_path), "u-1", "o(n)")
+            self.assertEqual(len(complexity_rows), 1)
+            self.assertEqual(complexity_rows[0]["title"], "Sliding Window Maximum")
+
+            difficulty_rows = search_problems(str(db_path), "u-1", "hard")
+            self.assertEqual(len(difficulty_rows), 1)
+            self.assertEqual(difficulty_rows[0]["title"], "Sliding Window Maximum")
+
+            year_rows = search_problems(str(db_path), "u-1", str(recent.year))
+            self.assertEqual(len(year_rows), 2)
+
+            month_rows = search_problems(str(db_path), "u-1", recent.strftime("%B"))
+            self.assertEqual(len(month_rows), 2)
+
+            slug_rows = search_problems(str(db_path), "u-1", "sliding-window-maximum")
+            self.assertEqual(len(slug_rows), 1)
+            self.assertEqual(slug_rows[0]["title"], "Sliding Window Maximum")
 
             pattern_rows = list_by_pattern(str(db_path), "u-1", "tree")
             self.assertEqual(len(pattern_rows), 1)
