@@ -107,14 +107,37 @@ def search_user_problems(
         WHERE up.user_id = ?
           AND (
             lower(p.title) LIKE ?
+            OR lower(COALESCE(p.difficulty, '')) LIKE ?
+            OR lower(COALESCE(p.leetcode_slug, '')) LIKE ?
+            OR lower(COALESCE(p.neetcode_slug, '')) LIKE ?
             OR lower(up.pattern) LIKE ?
+            OR lower(COALESCE(up.solved_at, '')) LIKE ?
+            OR lower(COALESCE(
+                CASE strftime('%m', up.solved_at)
+                    WHEN '01' THEN 'january'
+                    WHEN '02' THEN 'february'
+                    WHEN '03' THEN 'march'
+                    WHEN '04' THEN 'april'
+                    WHEN '05' THEN 'may'
+                    WHEN '06' THEN 'june'
+                    WHEN '07' THEN 'july'
+                    WHEN '08' THEN 'august'
+                    WHEN '09' THEN 'september'
+                    WHEN '10' THEN 'october'
+                    WHEN '11' THEN 'november'
+                    WHEN '12' THEN 'december'
+                END,
+                ''
+            )) LIKE ?
+            OR lower(COALESCE(up.time_complexity, '')) LIKE ?
+            OR lower(COALESCE(up.space_complexity, '')) LIKE ?
             OR lower(COALESCE(up.notes, '')) LIKE ?
             OR lower(COALESCE(up.concepts, '')) LIKE ?
           )
         ORDER BY up.solved_at DESC
         LIMIT 20
         """,
-        (user_id, like, like, like, like),
+        (user_id, like, like, like, like, like, like, like, like, like, like, like),
     ).fetchall()
 
 
