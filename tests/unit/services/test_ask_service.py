@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import UTC, datetime
+import sqlite3
 import tempfile
 import unittest
 
@@ -186,6 +188,85 @@ class AskServiceUnitTest(unittest.TestCase):
             result.tool_executions[0].result["problems"][0]["title"],
             "Contains Duplicate",
         )
+
+    def test_ask_question_can_fetch_due_reviews(self) -> None:
+        responses = iter(
+            [
+                """{
+                  "type": "tool_call",
+                  "tool_name": "get_due_reviews",
+                  "arguments": {
+                    "limit": 5
+                  }
+                }""",
+                """{
+                  "type": "final_answer",
+                  "answer": "You currently have 2 due reviews."
+                }""",
+            ]
+        )
+
+        def transport(model: str, prompt: str) -> str:
+            return next(responses)
+
+        provider = GeminiProvider(
+            api_key="dummy",
+            model_priority=("gemini-2.5-flash-lite",),
+            transport=transport,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            log_problem(
+                db_path,
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="Europe/Berlin",
+                    title="Maximum Depth of Binary Tree",
+                    difficulty="easy",
+                    leetcode_slug="maximum-depth-of-binary-tree",
+                    neetcode_slug="max-depth-of-binary-tree",
+                    pattern="tree dfs",
+                    solved_at="2026-03-01T08:00:00+00:00",
+                ),
+            )
+            log_problem(
+                db_path,
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="Europe/Berlin",
+                    title="Contains Duplicate",
+                    difficulty="easy",
+                    leetcode_slug="contains-duplicate",
+                    neetcode_slug="contains-duplicate",
+                    pattern="arrays and hashing",
+                    solved_at="2026-03-02T08:00:00+00:00",
+                ),
+            )
+            with sqlite3.connect(db_path) as conn:
+                conn.execute(
+                    """
+                    UPDATE user_problems
+                    SET last_review_requested_at = ?
+                    WHERE user_id = (SELECT id FROM users WHERE telegram_user_id = ?)
+                    """,
+                    (datetime.now(UTC).isoformat(), "u-1"),
+                )
+                conn.commit()
+
+            result = ask_question(
+                db_path=db_path,
+                telegram_user_id="u-1",
+                question="What is due?",
+                provider=provider,
+            )
+
+        self.assertEqual(result.answer, "You currently have 2 due reviews.")
+        self.assertEqual(result.tool_executions[0].tool_name, "get_due_reviews")
+        self.assertEqual(len(result.tool_executions[0].result["reviews"]), 2)
 
 
 if __name__ == "__main__":
