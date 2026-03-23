@@ -119,8 +119,7 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
 
     def test_build_daily_header_message(self) -> None:
         text = build_daily_header_message()
-        self.assertIn("Daily LeetCoach Review Plan", text)
-        self.assertIn("messages below", text.lower())
+        self.assertEqual(text, "")
 
     def test_scheduler_preflight_fails_when_token_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

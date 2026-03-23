@@ -50,12 +50,12 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             first = run_scheduler_once(config=cfg, now_iso=now_iso)
             self.assertEqual(first.sent, 1)
             self.assertEqual(first.failed, 0)
-            self.assertEqual(first.header_sent, 1)
+            self.assertEqual(first.header_sent, 0)
             self.assertEqual(first.selected, 1)
             self.assertEqual(first.due_and_unsent, 1)
-            self.assertEqual(mock_send.call_count, 2)
+            self.assertEqual(mock_send.call_count, 1)
             first_message_text = mock_send.call_args_list[0].args[2]
-            self.assertIn("Daily LeetCoach Review Plan", first_message_text)
+            self.assertIn("LeetCoach Reminder", first_message_text)
 
             with get_connection(str(db_path)) as conn:
                 row = conn.execute(
@@ -67,7 +67,7 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             second = run_scheduler_once(config=cfg, now_iso="2026-02-10T09:30:00+00:00")
             self.assertEqual(second.sent, 0)
             self.assertEqual(second.skipped_already_reminded_today, 0)
-            self.assertEqual(mock_send.call_count, 2)
+            self.assertEqual(mock_send.call_count, 1)
 
     @patch("leetcoach.app.application.reviews.reminder_engine._send_telegram_message")
     def test_run_once_respects_send_hour(self, mock_send) -> None:
@@ -195,14 +195,14 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
 
             first = run_scheduler_once(config=cfg, now_iso="2026-02-10T09:00:00+00:00")
             self.assertEqual(first.sent, 2)
-            self.assertEqual(first.header_sent, 1)
-            self.assertEqual(mock_send.call_count, 3)
+            self.assertEqual(first.header_sent, 0)
+            self.assertEqual(mock_send.call_count, 2)
 
             second = run_scheduler_once(config=cfg, now_iso="2026-02-10T09:01:00+00:00")
             self.assertEqual(second.sent, 0)
             self.assertEqual(second.header_sent, 0)
             self.assertEqual(second.skipped_already_reminded_today, 1)
-            self.assertEqual(mock_send.call_count, 3)
+            self.assertEqual(mock_send.call_count, 2)
 
     @patch("leetcoach.app.application.reviews.reminder_engine._send_telegram_message")
     def test_run_once_uses_user_specific_daily_max_override(self, mock_send) -> None:
@@ -250,8 +250,8 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             )
             first = run_scheduler_once(config=cfg, now_iso="2026-02-10T09:00:00+00:00")
             self.assertEqual(first.sent, 1)
-            self.assertEqual(first.header_sent, 1)
-            self.assertEqual(mock_send.call_count, 2)
+            self.assertEqual(first.header_sent, 0)
+            self.assertEqual(mock_send.call_count, 1)
 
     @patch("leetcoach.app.application.reviews.reminder_engine._send_telegram_message")
     def test_run_once_uses_user_specific_reminder_hour_override(self, mock_send) -> None:
@@ -299,11 +299,11 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
 
             sent = run_scheduler_once(config=cfg, now_iso="2026-02-10T11:00:00+00:00")
             self.assertEqual(sent.sent, 1)
-            self.assertEqual(sent.header_sent, 1)
+            self.assertEqual(sent.header_sent, 0)
 
     @patch("leetcoach.app.application.reviews.reminder_engine._send_telegram_message")
     def test_run_once_continues_after_single_send_failure(self, mock_send) -> None:
-        mock_send.side_effect = [(True, "ok"), (False, "network error"), (True, "ok")]
+        mock_send.side_effect = [(False, "network error"), (True, "ok")]
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "leetcoach-test.db"
             migrate_database(str(db_path))
@@ -352,7 +352,7 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             stats = run_scheduler_once(config=cfg, now_iso="2026-02-10T09:00:00+00:00")
             self.assertEqual(stats.sent, 1)
             self.assertEqual(stats.failed, 1)
-            self.assertEqual(mock_send.call_count, 3)
+            self.assertEqual(mock_send.call_count, 2)
 
     def test_queue_candidates_follow_queue_position_and_exclude_outstanding(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
