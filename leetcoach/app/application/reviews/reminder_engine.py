@@ -153,10 +153,7 @@ def build_reminder_message(candidate: ReminderCandidate) -> str:
 
 
 def build_daily_header_message() -> str:
-    return (
-        "📌 Daily LeetCoach Review Plan\n"
-        "All messages below this are today’s reminder picks."
-    )
+    return ""
 
 
 def row_to_candidate(row: sqlite3.Row) -> ReminderCandidate:
@@ -357,18 +354,20 @@ def run_scheduler_once(
                 ),
             )
 
-            header_ok, header_detail = _send_telegram_message(
-                config.telegram_bot_token, chat_id, build_daily_header_message()
-            )
-            if not header_ok:
-                failed += 1
-                LOGGER.error(
-                    "Reminder header send failed (chat_id=%s): %s",
-                    chat_id,
-                    header_detail,
+            header_text = build_daily_header_message().strip()
+            if header_text:
+                header_ok, header_detail = _send_telegram_message(
+                    config.telegram_bot_token, chat_id, header_text
                 )
-                continue
-            header_sent += 1
+                if not header_ok:
+                    failed += 1
+                    LOGGER.error(
+                        "Reminder header send failed (chat_id=%s): %s",
+                        chat_id,
+                        header_detail,
+                    )
+                    continue
+                header_sent += 1
 
             for candidate in selected:
                 text = build_reminder_message(candidate)
