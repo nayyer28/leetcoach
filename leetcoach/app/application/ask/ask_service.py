@@ -216,7 +216,7 @@ def ask_question(
     telegram_user_id: str,
     question: str,
     provider: GeminiProvider,
-    max_steps: int = 3,
+    max_steps: int = 5,
 ) -> AskServiceResult:
     tool_executions: list[AskToolExecution] = []
     last_model = ""
