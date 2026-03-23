@@ -13,6 +13,46 @@ from leetcoach.app.misc.migrate import migrate_database
 
 
 class AskServiceUnitTest(unittest.TestCase):
+    def test_ask_question_can_describe_capabilities(self) -> None:
+        responses = iter(
+            [
+                """{
+                  "type": "tool_call",
+                  "tool_name": "describe_ask_capabilities",
+                  "arguments": {
+                    "focus": "examples"
+                  }
+                }""",
+                """{
+                  "type": "final_answer",
+                  "answer": "You can ask things like show problem P1, what is due right now, or what is my strongest pattern."
+                }""",
+            ]
+        )
+
+        def transport(model: str, prompt: str) -> str:
+            return next(responses)
+
+        provider = GeminiProvider(
+            api_key="dummy",
+            model_priority=("gemini-2.5-flash-lite",),
+            transport=transport,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            result = ask_question(
+                db_path=db_path,
+                telegram_user_id="u-1",
+                question="What can /ask do?",
+                provider=provider,
+            )
+
+        self.assertIn("show problem P1", result.answer)
+        self.assertEqual(result.tool_executions[0].tool_name, "describe_ask_capabilities")
+        self.assertIn("examples", result.tool_executions[0].result)
+
     def test_ask_question_runs_tool_loop_and_returns_final_answer(self) -> None:
         responses = iter(
             [

@@ -21,6 +21,10 @@ from leetcoach.app.application.ask.problem_tools import (
     query_user_problems_tool_definition,
     search_user_problems_tool_definition,
 )
+from leetcoach.app.application.ask.help_tools import (
+    describe_ask_capabilities_tool_definition,
+    execute_describe_ask_capabilities,
+)
 from leetcoach.app.application.ask.review_tools import (
     execute_get_due_reviews,
     execute_get_last_reminder_batch,
@@ -96,6 +100,7 @@ def _serialize_aggregate_result(result: AggregateUserProblemsResult) -> dict[str
 
 def _tool_definitions() -> list[dict[str, Any]]:
     return [
+        describe_ask_capabilities_tool_definition(),
         aggregate_user_problems_tool_definition(),
         get_problem_detail_tool_definition(),
         list_user_problems_tool_definition(),
@@ -121,6 +126,8 @@ def _execute_tool(
             request=request,
         )
         return _serialize_aggregate_result(tool_result)
+    if tool_name == "describe_ask_capabilities":
+        return execute_describe_ask_capabilities(arguments=arguments)
     if tool_name == "get_problem_detail":
         return execute_get_problem_detail(
             db_path=db_path,
@@ -180,8 +187,11 @@ def _build_prompt(
         '{"type":"tool_call","tool_name":"<tool_name>","arguments":{...}}\n'
         '{"type":"final_answer","answer":"..."}\n'
         "Use the tool when data lookup or aggregation is needed.\n"
+        "If the user asks what /ask can do, asks for examples, or asks how to use it, call describe_ask_capabilities.\n"
         "Do not invent results.\n"
         "Useful examples:\n"
+        '- "what can /ask do?" -> describe_ask_capabilities\n'
+        '- "give me examples of ask questions" -> describe_ask_capabilities\n'
         '- "show P1" -> get_problem_detail\n'
         '- "list my latest 5 problems" -> list_user_problems\n'
         '- "show my tree problems" -> list_user_problems\n'
