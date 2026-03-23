@@ -22,6 +22,8 @@ class CliUnitTest(unittest.TestCase):
         mock_run.assert_called_once_with(
             [
                 sys.executable,
+                "-W",
+                "ignore::ResourceWarning",
                 "-m",
                 "unittest",
                 "discover",
@@ -48,6 +50,8 @@ class CliUnitTest(unittest.TestCase):
         mock_run.assert_called_once_with(
             [
                 sys.executable,
+                "-W",
+                "ignore::ResourceWarning",
                 "-m",
                 "unittest",
                 "-v",
