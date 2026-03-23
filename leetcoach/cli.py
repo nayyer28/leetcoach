@@ -58,8 +58,9 @@ def test_command(suite: str, target: str | None) -> None:
       lch test integration
       lch test unit tests.unit.dao.test_problem_reviews_dao
     """
+    cmd_prefix = [sys.executable, "-W", "ignore::ResourceWarning", "-m", "unittest"]
     if target:
-        cmd = [sys.executable, "-m", "unittest", "-v", target]
+        cmd = [*cmd_prefix, "-v", target]
     else:
         start_dir = {
             "all": "tests",
@@ -67,9 +68,7 @@ def test_command(suite: str, target: str | None) -> None:
             "integration": "tests/integration",
         }[suite.lower()]
         cmd = [
-            sys.executable,
-            "-m",
-            "unittest",
+            *cmd_prefix,
             "discover",
             "-s",
             start_dir,
