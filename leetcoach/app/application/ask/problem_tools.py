@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from leetcoach.app.application.problems.browse_problems import (
@@ -7,6 +8,7 @@ from leetcoach.app.application.problems.browse_problems import (
     list_all_problems,
     list_by_pattern,
     list_recent_problems,
+    query_problems,
     search_problems,
 )
 from leetcoach.app.application.problems.problem_refs import parse_problem_ref
@@ -15,6 +17,12 @@ from leetcoach.app.application.shared.patterns import ROADMAP_PATTERN_LEVELS, ca
 
 VALID_PATTERN_LABELS: tuple[str, ...] = tuple(
     label for _, label in ROADMAP_PATTERN_LEVELS.values()
+)
+VALID_ORDER_BY: tuple[str, ...] = (
+    "solved_at_desc",
+    "solved_at_asc",
+    "display_id_asc",
+    "display_id_desc",
 )
 
 
@@ -80,6 +88,56 @@ def search_user_problems_tool_definition() -> dict[str, Any]:
     }
 
 
+def query_user_problems_tool_definition() -> dict[str, Any]:
+    return {
+        "name": "query_user_problems",
+        "description": "Query logged user problems with combined filters such as problem ref, difficulty, pattern, text query, solved date range, ordering, and limit.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "problem_ref": {
+                    "type": "string",
+                    "description": "Optional stable problem ref such as P1.",
+                },
+                "difficulty": {
+                    "type": "string",
+                    "enum": ["easy", "medium", "hard"],
+                    "description": "Optional difficulty filter.",
+                },
+                "pattern": {
+                    "type": "string",
+                    "enum": list(VALID_PATTERN_LABELS),
+                    "description": "Optional roadmap pattern filter.",
+                },
+                "text_query": {
+                    "type": "string",
+                    "description": "Optional free-text query across problem fields.",
+                },
+                "solved_date_from": {
+                    "type": "string",
+                    "description": "Optional inclusive solved-date lower bound in YYYY-MM-DD format.",
+                },
+                "solved_date_to": {
+                    "type": "string",
+                    "description": "Optional inclusive solved-date upper bound in YYYY-MM-DD format.",
+                },
+                "order_by": {
+                    "type": "string",
+                    "enum": list(VALID_ORDER_BY),
+                    "description": "Ordering for matching problems.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20,
+                    "description": "Maximum number of problems to return.",
+                },
+            },
+            "required": [],
+        },
+    }
+
+
 def _parse_problem_ref_argument(arguments: dict[str, Any]) -> int:
     raw = arguments.get("problem_ref")
     if not isinstance(raw, str):
@@ -123,6 +181,48 @@ def _parse_query_argument(arguments: dict[str, Any]) -> str:
     return raw.strip()
 
 
+def _parse_optional_text_query_argument(arguments: dict[str, Any]) -> str | None:
+    raw = arguments.get("text_query")
+    if raw is None:
+        return None
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError("text_query must be a non-empty string")
+    return raw.strip()
+
+
+def _parse_optional_date_argument(arguments: dict[str, Any], key: str) -> date | None:
+    raw = arguments.get(key)
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError(f"{key} must be a YYYY-MM-DD string")
+    try:
+        return date.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError(f"{key} must be a YYYY-MM-DD string") from exc
+
+
+def _parse_difficulty_argument(arguments: dict[str, Any]) -> str | None:
+    raw = arguments.get("difficulty")
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError("difficulty must be a string")
+    normalized = raw.strip().lower()
+    if normalized not in {"easy", "medium", "hard"}:
+        raise ValueError("difficulty must be easy, medium, or hard")
+    return normalized
+
+
+def _parse_order_by_argument(arguments: dict[str, Any]) -> str:
+    raw = arguments.get("order_by", "solved_at_desc")
+    if not isinstance(raw, str):
+        raise ValueError("order_by must be a string")
+    if raw not in VALID_ORDER_BY:
+        raise ValueError("order_by must be a supported ordering")
+    return raw
+
+
 def execute_get_problem_detail(
     *, db_path: str, telegram_user_id: str, arguments: dict[str, Any]
 ) -> dict[str, Any]:
@@ -159,4 +259,39 @@ def execute_search_user_problems(
     return {
         "query": query,
         "problems": search_problems(db_path, telegram_user_id, query),
+    }
+
+
+def execute_query_user_problems(
+    *, db_path: str, telegram_user_id: str, arguments: dict[str, Any]
+) -> dict[str, Any]:
+    display_id = (
+        _parse_problem_ref_argument(arguments) if arguments.get("problem_ref") is not None else None
+    )
+    difficulty = _parse_difficulty_argument(arguments)
+    pattern = _parse_pattern_argument(arguments)
+    text_query = _parse_optional_text_query_argument(arguments)
+    solved_date_from = _parse_optional_date_argument(arguments, "solved_date_from")
+    solved_date_to = _parse_optional_date_argument(arguments, "solved_date_to")
+    if (
+        solved_date_from is not None
+        and solved_date_to is not None
+        and solved_date_from > solved_date_to
+    ):
+        raise ValueError("solved_date_from cannot be after solved_date_to")
+    order_by = _parse_order_by_argument(arguments)
+    limit = _parse_limit_argument(arguments)
+    return {
+        "problems": query_problems(
+            db_path,
+            telegram_user_id,
+            display_id=display_id,
+            difficulty=difficulty,
+            pattern=pattern,
+            text_query=text_query,
+            solved_date_from=solved_date_from,
+            solved_date_to=solved_date_to,
+            order_by=order_by,
+            limit=limit,
+        )
     }

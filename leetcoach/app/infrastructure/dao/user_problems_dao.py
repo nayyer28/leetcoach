@@ -215,6 +215,115 @@ def list_recent_user_problems(
     ).fetchall()
 
 
+def query_user_problems(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    display_id: int | None = None,
+    difficulty: str | None = None,
+    pattern: str | None = None,
+    text_query: str | None = None,
+    solved_date_from: str | None = None,
+    solved_date_to: str | None = None,
+    order_by: str = "solved_at_desc",
+    limit: int = 10,
+) -> list[sqlite3.Row]:
+    order_sql = {
+        "solved_at_desc": "up.solved_at DESC, up.id DESC",
+        "solved_at_asc": "up.solved_at ASC, up.id ASC",
+        "display_id_asc": "up.display_id ASC",
+        "display_id_desc": "up.display_id DESC",
+    }.get(order_by)
+    if order_sql is None:
+        raise ValueError("unsupported order_by")
+
+    where_clauses = ["up.user_id = ?"]
+    params: list[object] = [user_id]
+
+    if display_id is not None:
+        where_clauses.append("up.display_id = ?")
+        params.append(display_id)
+
+    if difficulty is not None:
+        where_clauses.append("lower(p.difficulty) = ?")
+        params.append(difficulty.lower())
+
+    if pattern is not None:
+        where_clauses.append("lower(up.pattern) = ?")
+        params.append(pattern.lower())
+
+    if solved_date_from is not None:
+        where_clauses.append("date(up.solved_at) >= date(?)")
+        params.append(solved_date_from)
+
+    if solved_date_to is not None:
+        where_clauses.append("date(up.solved_at) <= date(?)")
+        params.append(solved_date_to)
+
+    if text_query is not None and text_query.strip():
+        like = f"%{text_query.lower()}%"
+        where_clauses.append(
+            """
+            (
+              lower(p.title) LIKE ?
+              OR lower(COALESCE(p.difficulty, '')) LIKE ?
+              OR lower(COALESCE(p.leetcode_slug, '')) LIKE ?
+              OR lower(COALESCE(p.neetcode_slug, '')) LIKE ?
+              OR lower(up.pattern) LIKE ?
+              OR lower(COALESCE(up.solved_at, '')) LIKE ?
+              OR lower(COALESCE(
+                  CASE strftime('%m', up.solved_at)
+                      WHEN '01' THEN 'january'
+                      WHEN '02' THEN 'february'
+                      WHEN '03' THEN 'march'
+                      WHEN '04' THEN 'april'
+                      WHEN '05' THEN 'may'
+                      WHEN '06' THEN 'june'
+                      WHEN '07' THEN 'july'
+                      WHEN '08' THEN 'august'
+                      WHEN '09' THEN 'september'
+                      WHEN '10' THEN 'october'
+                      WHEN '11' THEN 'november'
+                      WHEN '12' THEN 'december'
+                  END,
+                  ''
+              )) LIKE ?
+              OR lower(COALESCE(up.time_complexity, '')) LIKE ?
+              OR lower(COALESCE(up.space_complexity, '')) LIKE ?
+              OR lower(COALESCE(up.notes, '')) LIKE ?
+              OR lower(COALESCE(up.concepts, '')) LIKE ?
+            )
+            """
+        )
+        params.extend([like] * 11)
+
+    sql = f"""
+        SELECT
+            up.id AS user_problem_id,
+            up.display_id,
+            p.id AS problem_id,
+            p.title,
+            p.difficulty,
+            p.leetcode_slug,
+            p.neetcode_slug,
+            up.pattern,
+            up.solved_at,
+            up.concepts,
+            up.time_complexity,
+            up.space_complexity,
+            up.notes,
+            up.created_at,
+            up.updated_at
+        FROM user_problems up
+        JOIN problems p ON p.id = up.problem_id
+        WHERE {' AND '.join(where_clauses)}
+        ORDER BY {order_sql}
+        LIMIT ?
+    """
+    params.append(limit)
+    return conn.execute(sql, params).fetchall()
+
+
 def get_user_problem_detail(
     conn: sqlite3.Connection, *, user_id: int, user_problem_id: int
 ) -> sqlite3.Row | None:

@@ -189,6 +189,78 @@ class AskServiceUnitTest(unittest.TestCase):
             "Contains Duplicate",
         )
 
+    def test_ask_question_can_query_problems_by_date_range(self) -> None:
+        responses = iter(
+            [
+                """{
+                  "type": "tool_call",
+                  "tool_name": "query_user_problems",
+                  "arguments": {
+                    "solved_date_from": "2026-02-01",
+                    "solved_date_to": "2026-02-28",
+                    "order_by": "solved_at_asc",
+                    "limit": 10
+                  }
+                }""",
+                """{
+                  "type": "final_answer",
+                  "answer": "You solved 2 problems in February 2026."
+                }""",
+            ]
+        )
+
+        def transport(model: str, prompt: str) -> str:
+            return next(responses)
+
+        provider = GeminiProvider(
+            api_key="dummy",
+            model_priority=("gemini-2.5-flash-lite",),
+            transport=transport,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            log_problem(
+                db_path,
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="Europe/Berlin",
+                    title="Maximum Depth of Binary Tree",
+                    difficulty="easy",
+                    leetcode_slug="maximum-depth-of-binary-tree",
+                    neetcode_slug="max-depth-of-binary-tree",
+                    pattern="trees",
+                    solved_at="2026-02-01T08:00:00+00:00",
+                ),
+            )
+            log_problem(
+                db_path,
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="Europe/Berlin",
+                    title="Contains Duplicate",
+                    difficulty="easy",
+                    leetcode_slug="contains-duplicate",
+                    neetcode_slug="contains-duplicate",
+                    pattern="arrays and hashing",
+                    solved_at="2026-02-02T08:00:00+00:00",
+                ),
+            )
+
+            result = ask_question(
+                db_path=db_path,
+                telegram_user_id="u-1",
+                question="Show me all problems I solved in Feb 2026",
+                provider=provider,
+            )
+
+        self.assertEqual(result.answer, "You solved 2 problems in February 2026.")
+        self.assertEqual(result.tool_executions[0].tool_name, "query_user_problems")
+        self.assertEqual(len(result.tool_executions[0].result["problems"]), 2)
+
     def test_ask_question_can_fetch_due_reviews(self) -> None:
         responses = iter(
             [

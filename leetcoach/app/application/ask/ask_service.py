@@ -14,9 +14,11 @@ from leetcoach.app.application.analytics.aggregate_user_problems import (
 from leetcoach.app.application.ask.problem_tools import (
     execute_get_problem_detail,
     execute_list_user_problems,
+    execute_query_user_problems,
     execute_search_user_problems,
     get_problem_detail_tool_definition,
     list_user_problems_tool_definition,
+    query_user_problems_tool_definition,
     search_user_problems_tool_definition,
 )
 from leetcoach.app.application.ask.review_tools import (
@@ -98,6 +100,7 @@ def _tool_definitions() -> list[dict[str, Any]]:
         get_problem_detail_tool_definition(),
         list_user_problems_tool_definition(),
         search_user_problems_tool_definition(),
+        query_user_problems_tool_definition(),
         get_due_reviews_tool_definition(),
         get_last_reminder_batch_tool_definition(),
     ]
@@ -132,6 +135,12 @@ def _execute_tool(
         )
     if tool_name == "search_user_problems":
         return execute_search_user_problems(
+            db_path=db_path,
+            telegram_user_id=telegram_user_id,
+            arguments=arguments,
+        )
+    if tool_name == "query_user_problems":
+        return execute_query_user_problems(
             db_path=db_path,
             telegram_user_id=telegram_user_id,
             arguments=arguments,
@@ -177,6 +186,8 @@ def _build_prompt(
         '- "list my latest 5 problems" -> list_user_problems\n'
         '- "show my tree problems" -> list_user_problems\n'
         '- "search for two sum" -> search_user_problems\n'
+        '- "show me all problems I solved in Feb 2026" -> query_user_problems\n'
+        '- "show my hard tree problems from March 2026" -> query_user_problems\n'
         '- "what is due?" -> get_due_reviews\n'
         '- "what did you remind me last?" -> get_last_reminder_batch\n'
         '- "how many easy problems have I solved in Trees?" -> aggregate_user_problems\n'
