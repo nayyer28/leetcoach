@@ -13,6 +13,47 @@ from leetcoach.app.misc.migrate import migrate_database
 
 
 class AskServiceUnitTest(unittest.TestCase):
+    def test_ask_question_records_failure_trace_when_steps_exhausted(self) -> None:
+        responses = iter(
+            [
+                """{
+                  "type": "tool_call",
+                  "tool_name": "describe_ask_capabilities",
+                  "arguments": {
+                    "focus": "overview"
+                  }
+                }""",
+                """{
+                  "type": "tool_call",
+                  "tool_name": "describe_ask_capabilities",
+                  "arguments": {
+                    "focus": "overview"
+                  }
+                }""",
+            ]
+        )
+
+        def transport(model: str, prompt: str) -> str:
+            return next(responses)
+
+        provider = GeminiProvider(
+            api_key="dummy",
+            model_priority=("gemini-2.5-flash-lite",),
+            transport=transport,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            with self.assertRaisesRegex(ValueError, "max_steps"):
+                ask_question(
+                    db_path=db_path,
+                    telegram_user_id="u-1",
+                    question="What can /ask do?",
+                    provider=provider,
+                    max_steps=2,
+                )
+
     def test_ask_question_can_describe_capabilities(self) -> None:
         responses = iter(
             [
@@ -52,6 +93,15 @@ class AskServiceUnitTest(unittest.TestCase):
         self.assertIn("show problem P1", result.answer)
         self.assertEqual(result.tool_executions[0].tool_name, "describe_ask_capabilities")
         self.assertIn("examples", result.tool_executions[0].result)
+        self.assertTrue(result.request_id)
+        self.assertEqual(result.trace_events[0].event, "ask.start")
+        self.assertTrue(
+            any(event.event == "ask.tool_call" for event in result.trace_events)
+        )
+        self.assertTrue(
+            any(event.event == "ask.tool_result" for event in result.trace_events)
+        )
+        self.assertEqual(result.trace_events[-1].event, "ask.final_answer")
 
     def test_ask_question_runs_tool_loop_and_returns_final_answer(self) -> None:
         responses = iter(

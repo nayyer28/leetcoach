@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
+import logging
+import os
 from typing import Any
+from uuid import uuid4
 
 from leetcoach.app.application.analytics.aggregate_user_problems import (
     AggregateProblemFilters,
@@ -36,6 +39,8 @@ from leetcoach.app.infrastructure.llm.gemini_provider import (
     GeminiProvider,
 )
 
+LOGGER = logging.getLogger("leetcoach.ask")
+
 
 @dataclass(frozen=True)
 class AskToolExecution:
@@ -49,6 +54,15 @@ class AskServiceResult:
     answer: str
     model: str
     tool_executions: list[AskToolExecution]
+    request_id: str = ""
+    trace_events: list["AskTraceEvent"] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class AskTraceEvent:
+    event: str
+    step: int | None
+    payload: dict[str, Any]
 
 
 def _extract_json_payload(text: str) -> dict[str, Any]:
@@ -96,6 +110,54 @@ def _serialize_aggregate_result(result: AggregateUserProblemsResult) -> dict[str
         "filters_applied": result.filters_applied,
         "rows": [{"group": row.group, "value": row.value} for row in result.rows],
     }
+
+
+def _prompt_debug_enabled() -> bool:
+    return os.getenv("LEETCOACH_ASK_DEBUG_PROMPTS") == "1"
+
+
+def _truncate_text(text: str, limit: int = 600) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "...<truncated>"
+
+
+def _summarize_tool_result(result: dict[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {"keys": sorted(result.keys())}
+    for key, value in result.items():
+        if isinstance(value, list):
+            summary[f"{key}_count"] = len(value)
+        elif isinstance(value, dict):
+            summary[f"{key}_keys"] = sorted(value.keys())
+        elif isinstance(value, str):
+            summary[key] = _truncate_text(value, 160)
+        elif isinstance(value, (int, float, bool)) or value is None:
+            summary[key] = value
+    return summary
+
+
+def _record_trace(
+    trace_events: list[AskTraceEvent],
+    *,
+    request_id: str,
+    event: str,
+    step: int | None,
+    payload: dict[str, Any],
+) -> None:
+    trace_events.append(AskTraceEvent(event=event, step=step, payload=payload))
+    LOGGER.info(
+        "[ask.trace] %s",
+        json.dumps(
+            {
+                "request_id": request_id,
+                "event": event,
+                "step": step,
+                **payload,
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        ),
+    )
 
 
 def _tool_definitions() -> list[dict[str, Any]]:
@@ -218,24 +280,83 @@ def ask_question(
     provider: GeminiProvider,
     max_steps: int = 5,
 ) -> AskServiceResult:
+    request_id = uuid4().hex[:12]
     tool_executions: list[AskToolExecution] = []
+    trace_events: list[AskTraceEvent] = []
     last_model = ""
+    prompt_debug = _prompt_debug_enabled()
 
-    for _ in range(max_steps):
+    _record_trace(
+        trace_events,
+        request_id=request_id,
+        event="ask.start",
+        step=None,
+        payload={
+            "telegram_user_id": telegram_user_id,
+            "question": question,
+            "max_steps": max_steps,
+            "prompt_debug": prompt_debug,
+        },
+    )
+
+    for step in range(1, max_steps + 1):
         prompt = _build_prompt(question=question, tool_executions=tool_executions)
+        if prompt_debug:
+            _record_trace(
+                trace_events,
+                request_id=request_id,
+                event="ask.prompt",
+                step=step,
+                payload={"prompt": _truncate_text(prompt, 4000)},
+            )
         llm_result: GeminiGenerateResult = provider.generate_text(prompt)
         last_model = llm_result.model
+        _record_trace(
+            trace_events,
+            request_id=request_id,
+            event="ask.model_response",
+            step=step,
+            payload={
+                "model": last_model,
+                "raw_text": _truncate_text(llm_result.text, 2000)
+                if prompt_debug
+                else _truncate_text(llm_result.text, 300),
+            },
+        )
         payload = _extract_json_payload(llm_result.text)
         response_type = payload.get("type")
+        _record_trace(
+            trace_events,
+            request_id=request_id,
+            event="ask.parsed_response",
+            step=step,
+            payload={
+                "response_type": str(response_type),
+                "payload_keys": sorted(payload.keys()),
+            },
+        )
 
         if response_type == "final_answer":
             answer = payload.get("answer")
             if not isinstance(answer, str) or not answer.strip():
                 raise ValueError("final_answer response must include a non-empty answer")
+            _record_trace(
+                trace_events,
+                request_id=request_id,
+                event="ask.final_answer",
+                step=step,
+                payload={
+                    "model": last_model,
+                    "answer": _truncate_text(answer.strip(), 500),
+                    "tool_execution_count": len(tool_executions),
+                },
+            )
             return AskServiceResult(
                 answer=answer.strip(),
                 model=last_model,
                 tool_executions=tool_executions,
+                request_id=request_id,
+                trace_events=trace_events,
             )
 
         if response_type == "tool_call":
@@ -245,11 +366,31 @@ def ask_question(
                 raise ValueError("tool_call must include a non-empty tool_name")
             if not isinstance(arguments, dict):
                 raise ValueError("tool_call arguments must be an object")
+            _record_trace(
+                trace_events,
+                request_id=request_id,
+                event="ask.tool_call",
+                step=step,
+                payload={
+                    "tool_name": tool_name,
+                    "arguments": arguments,
+                },
+            )
             tool_result = _execute_tool(
                 tool_name=tool_name,
                 arguments=arguments,
                 db_path=db_path,
                 telegram_user_id=telegram_user_id,
+            )
+            _record_trace(
+                trace_events,
+                request_id=request_id,
+                event="ask.tool_result",
+                step=step,
+                payload={
+                    "tool_name": tool_name,
+                    "result_summary": _summarize_tool_result(tool_result),
+                },
             )
             tool_executions.append(
                 AskToolExecution(
@@ -260,6 +401,24 @@ def ask_question(
             )
             continue
 
+        _record_trace(
+            trace_events,
+            request_id=request_id,
+            event="ask.invalid_response",
+            step=step,
+            payload={"response_type": str(response_type)},
+        )
         raise ValueError("LLM response must be final_answer or tool_call")
 
+    _record_trace(
+        trace_events,
+        request_id=request_id,
+        event="ask.fail",
+        step=max_steps,
+        payload={
+            "reason": "max_steps_exhausted",
+            "tool_execution_count": len(tool_executions),
+            "last_model": last_model,
+        },
+    )
     raise ValueError("LLM did not finish within max_steps")
