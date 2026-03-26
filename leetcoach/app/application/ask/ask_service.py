@@ -51,9 +51,14 @@ class AskToolExecution:
 
 @dataclass(frozen=True)
 class AskServiceResult:
-    answer: str
+    response_type: str
     model: str
     tool_executions: list[AskToolExecution]
+    answer: str | None = None
+    confidence: str | None = None
+    tool_fit: str | None = None
+    answer_basis: str | None = None
+    comments: str | None = None
     request_id: str = ""
     trace_events: list["AskTraceEvent"] = field(default_factory=list)
 
@@ -271,11 +276,15 @@ def _build_prompt(
         "You must return JSON only, no markdown and no prose outside JSON.\n"
         "Choose exactly one of these response shapes:\n"
         '{"type":"tool_call","tool_name":"<tool_name>","arguments":{...}}\n'
-        '{"type":"final_answer","answer":"..."}\n'
+        '{"type":"final_answer","answer":"...","confidence":"high|medium|low","tool_fit":"exact|approximate|insufficient","answer_basis":"direct_tool_result|light_inference|best_effort","comments":"..."}\n'
+        '{"type":"cannot_answer_confidently","comments":"..."}\n'
         "Use the tool when data lookup or aggregation is needed.\n"
         "If previous tool executions already contain enough information to answer, return final_answer.\n"
         "Never call the same tool twice with the same arguments in a single request.\n"
         "After describe_ask_capabilities returns, respond with final_answer instead of calling it again.\n"
+        "When you return final_answer, always include confidence, tool_fit, answer_basis, and comments.\n"
+        "Use comments to briefly explain how you got the answer or any limitation/caveat.\n"
+        "If the available tools are not a good fit for the question, return cannot_answer_confidently instead of guessing.\n"
         "If the user asks what /ask can do, asks for examples, or asks how to use it, call describe_ask_capabilities.\n"
         "Do not invent results.\n"
         "Useful examples:\n"
@@ -368,6 +377,26 @@ def ask_question(
                 answer = payload.get("answer")
                 if not isinstance(answer, str) or not answer.strip():
                     raise ValueError("final_answer response must include a non-empty answer")
+                confidence = payload.get("confidence")
+                tool_fit = payload.get("tool_fit")
+                answer_basis = payload.get("answer_basis")
+                comments = payload.get("comments")
+                if confidence not in {"high", "medium", "low"}:
+                    raise ValueError("final_answer confidence must be high, medium, or low")
+                if tool_fit not in {"exact", "approximate", "insufficient"}:
+                    raise ValueError(
+                        "final_answer tool_fit must be exact, approximate, or insufficient"
+                    )
+                if answer_basis not in {
+                    "direct_tool_result",
+                    "light_inference",
+                    "best_effort",
+                }:
+                    raise ValueError(
+                        "final_answer answer_basis must be direct_tool_result, light_inference, or best_effort"
+                    )
+                if not isinstance(comments, str) or not comments.strip():
+                    raise ValueError("final_answer comments must be a non-empty string")
                 _record_trace(
                     trace_events,
                     request_id=request_id,
@@ -376,13 +405,48 @@ def ask_question(
                     payload={
                         "model": last_model,
                         "answer": _truncate_text(answer.strip(), 500),
+                        "confidence": confidence,
+                        "tool_fit": tool_fit,
+                        "answer_basis": answer_basis,
+                        "comments": _truncate_text(comments.strip(), 300),
                         "tool_execution_count": len(tool_executions),
                     },
                 )
                 return AskServiceResult(
-                    answer=answer.strip(),
+                    response_type="final_answer",
                     model=last_model,
                     tool_executions=tool_executions,
+                    answer=answer.strip(),
+                    confidence=confidence,
+                    tool_fit=tool_fit,
+                    answer_basis=answer_basis,
+                    comments=comments.strip(),
+                    request_id=request_id,
+                    trace_events=trace_events,
+                )
+
+            if response_type == "cannot_answer_confidently":
+                comments = payload.get("comments")
+                if not isinstance(comments, str) or not comments.strip():
+                    raise ValueError(
+                        "cannot_answer_confidently comments must be a non-empty string"
+                    )
+                _record_trace(
+                    trace_events,
+                    request_id=request_id,
+                    event="ask.cannot_answer_confidently",
+                    step=step,
+                    payload={
+                        "model": last_model,
+                        "comments": _truncate_text(comments.strip(), 300),
+                        "tool_execution_count": len(tool_executions),
+                    },
+                )
+                return AskServiceResult(
+                    response_type="cannot_answer_confidently",
+                    model=last_model,
+                    tool_executions=tool_executions,
+                    comments=comments.strip(),
                     request_id=request_id,
                     trace_events=trace_events,
                 )
@@ -463,7 +527,9 @@ def ask_question(
                 step=step,
                 payload={"response_type": str(response_type)},
             )
-            raise ValueError("LLM response must be final_answer or tool_call")
+            raise ValueError(
+                "LLM response must be final_answer, cannot_answer_confidently, or tool_call"
+            )
     except AskServiceError:
         raise
     except Exception as exc:

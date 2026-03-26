@@ -50,7 +50,12 @@ class CliUnitTest(unittest.TestCase):
         )
         mock_provider_cls.return_value = object()
         mock_ask_question.return_value = SimpleNamespace(
+            response_type="final_answer",
             answer="February was your strongest month.",
+            confidence="medium",
+            tool_fit="approximate",
+            answer_basis="best_effort",
+            comments="I approximated this from the available tool output.",
             model="gemini-2.5-flash-lite",
             request_id="req-123",
             tool_executions=[],
@@ -65,6 +70,8 @@ class CliUnitTest(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         self.assertIn("February was your strongest month.", result.output)
+        self.assertIn("Confidence: medium", result.output)
+        self.assertIn("Tool fit: approximate", result.output)
         mock_provider_cls.assert_called_once()
         mock_ask_question.assert_called_once_with(
             db_path="/tmp/leetcoach.db",
@@ -85,7 +92,12 @@ class CliUnitTest(unittest.TestCase):
         )
         mock_provider_cls.return_value = object()
         mock_ask_question.return_value = SimpleNamespace(
+            response_type="final_answer",
             answer="You can ask about problems and reviews.",
+            confidence="high",
+            tool_fit="exact",
+            answer_basis="direct_tool_result",
+            comments="I used the ask capabilities tool result directly.",
             model="gemini-2.5-flash-lite",
             request_id="req-123",
             tool_executions=[],
@@ -108,6 +120,44 @@ class CliUnitTest(unittest.TestCase):
         self.assertIn("request_id: req-123", result.output)
         self.assertIn("[step -] ask.start", result.output)
         self.assertIn("You can ask about problems and reviews.", result.output)
+        self.assertIn("Comments: I used the ask capabilities tool result directly.", result.output)
+
+    @patch("leetcoach.cli.ask_question")
+    @patch("leetcoach.cli.GeminiProvider")
+    @patch("leetcoach.cli.load_config")
+    def test_admin_ask_can_render_cannot_answer_confidently(
+        self, mock_load_config, mock_provider_cls, mock_ask_question
+    ) -> None:
+        mock_load_config.return_value = SimpleNamespace(
+            db_path="/tmp/leetcoach.db",
+            gemini_api_key="test-key",
+        )
+        mock_provider_cls.return_value = object()
+        mock_ask_question.return_value = SimpleNamespace(
+            response_type="cannot_answer_confidently",
+            answer=None,
+            confidence=None,
+            tool_fit=None,
+            answer_basis=None,
+            comments="The current tools do not support month-level grouping.",
+            model="gemini-2.5-flash-lite",
+            request_id="req-555",
+            tool_executions=[],
+            trace_events=[],
+        )
+        runner = CliRunner()
+
+        result = runner.invoke(
+            cli,
+            ["admin", "ask", "--user", "u-1", "which", "month", "was", "best?"],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("I cannot answer this confidently right now.", result.output)
+        self.assertIn(
+            "Comments: The current tools do not support month-level grouping.",
+            result.output,
+        )
 
     @patch("leetcoach.cli.ask_question")
     @patch("leetcoach.cli.GeminiProvider")

@@ -13,6 +13,43 @@ from leetcoach.app.misc.migrate import migrate_database
 
 
 class AskServiceUnitTest(unittest.TestCase):
+    def test_ask_question_can_return_cannot_answer_confidently(self) -> None:
+        responses = iter(
+            [
+                """{
+                  "type": "cannot_answer_confidently",
+                  "comments": "The current tools do not expose a month-level grouping, so I cannot answer this reliably."
+                }""",
+            ]
+        )
+
+        def transport(model: str, prompt: str) -> str:
+            return next(responses)
+
+        provider = GeminiProvider(
+            api_key="dummy",
+            model_priority=("gemini-2.5-flash-lite",),
+            transport=transport,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            result = ask_question(
+                db_path=db_path,
+                telegram_user_id="u-1",
+                question="Which month did I solve the most questions?",
+                provider=provider,
+            )
+
+        self.assertEqual(result.response_type, "cannot_answer_confidently")
+        self.assertIsNone(result.answer)
+        self.assertEqual(
+            result.comments,
+            "The current tools do not expose a month-level grouping, so I cannot answer this reliably.",
+        )
+        self.assertEqual(result.trace_events[-1].event, "ask.cannot_answer_confidently")
+
     def test_ask_question_rejects_duplicate_tool_call_early(self) -> None:
         responses = iter(
             [
@@ -116,7 +153,11 @@ class AskServiceUnitTest(unittest.TestCase):
                 }""",
                 """{
                   "type": "final_answer",
-                  "answer": "You can ask things like show problem P1, what is due right now, or what is my strongest pattern."
+                  "answer": "You can ask things like show problem P1, what is due right now, or what is my strongest pattern.",
+                  "confidence": "high",
+                  "tool_fit": "exact",
+                  "answer_basis": "direct_tool_result",
+                  "comments": "I used the ask capabilities tool directly."
                 }""",
             ]
         )
@@ -141,6 +182,10 @@ class AskServiceUnitTest(unittest.TestCase):
             )
 
         self.assertIn("show problem P1", result.answer)
+        self.assertEqual(result.confidence, "high")
+        self.assertEqual(result.tool_fit, "exact")
+        self.assertEqual(result.answer_basis, "direct_tool_result")
+        self.assertEqual(result.comments, "I used the ask capabilities tool directly.")
         self.assertEqual(result.tool_executions[0].tool_name, "describe_ask_capabilities")
         self.assertIn("examples", result.tool_executions[0].result)
         self.assertTrue(result.request_id)
@@ -167,7 +212,11 @@ class AskServiceUnitTest(unittest.TestCase):
                 }""",
                 """{
                   "type": "final_answer",
-                  "answer": "You have solved 1 easy tree problem."
+                  "answer": "You have solved 1 easy tree problem.",
+                  "confidence": "high",
+                  "tool_fit": "exact",
+                  "answer_basis": "direct_tool_result",
+                  "comments": "I used the aggregate tool result directly."
                 }""",
             ]
         )
@@ -207,6 +256,7 @@ class AskServiceUnitTest(unittest.TestCase):
             )
 
         self.assertEqual(result.answer, "You have solved 1 easy tree problem.")
+        self.assertEqual(result.comments, "I used the aggregate tool result directly.")
         self.assertEqual(len(result.tool_executions), 1)
         self.assertEqual(result.tool_executions[0].tool_name, "aggregate_user_problems")
         self.assertEqual(result.tool_executions[0].result["rows"][0]["value"], 1)
@@ -223,7 +273,11 @@ class AskServiceUnitTest(unittest.TestCase):
                 }""",
                 """{
                   "type": "final_answer",
-                  "answer": "P1 is Maximum Depth of Binary Tree."
+                  "answer": "P1 is Maximum Depth of Binary Tree.",
+                  "confidence": "high",
+                  "tool_fit": "exact",
+                  "answer_basis": "direct_tool_result",
+                  "comments": "I used the problem detail tool directly."
                 }""",
             ]
         )
@@ -281,7 +335,11 @@ class AskServiceUnitTest(unittest.TestCase):
                 }""",
                 """{
                   "type": "final_answer",
-                  "answer": "I found 1 matching problem: Contains Duplicate."
+                  "answer": "I found 1 matching problem: Contains Duplicate.",
+                  "confidence": "high",
+                  "tool_fit": "exact",
+                  "answer_basis": "direct_tool_result",
+                  "comments": "I used the search results directly."
                 }""",
             ]
         )
@@ -344,7 +402,11 @@ class AskServiceUnitTest(unittest.TestCase):
                 }""",
                 """{
                   "type": "final_answer",
-                  "answer": "You solved 2 problems in February 2026."
+                  "answer": "You solved 2 problems in February 2026.",
+                  "confidence": "high",
+                  "tool_fit": "exact",
+                  "answer_basis": "direct_tool_result",
+                  "comments": "I used the query_user_problems result directly."
                 }""",
             ]
         )
@@ -413,7 +475,11 @@ class AskServiceUnitTest(unittest.TestCase):
                 }""",
                 """{
                   "type": "final_answer",
-                  "answer": "You currently have 2 due reviews."
+                  "answer": "You currently have 2 due reviews.",
+                  "confidence": "high",
+                  "tool_fit": "exact",
+                  "answer_basis": "direct_tool_result",
+                  "comments": "I used the due reviews tool result directly."
                 }""",
             ]
         )
@@ -492,7 +558,11 @@ class AskServiceUnitTest(unittest.TestCase):
                 }""",
                 """{
                   "type": "final_answer",
-                  "answer": "Your last reminder batch had 2 problems."
+                  "answer": "Your last reminder batch had 2 problems.",
+                  "confidence": "high",
+                  "tool_fit": "exact",
+                  "answer_basis": "direct_tool_result",
+                  "comments": "I used the last reminder batch tool result directly."
                 }""",
             ]
         )
