@@ -2,6 +2,11 @@
 
 This is the first CI/CD path for leetcoach.
 
+Current runtime shape:
+- `bot` service for Telegram traffic
+- `scheduler` service for outbound reminders
+- optional local/admin diagnostics through `lch admin ask`
+
 Design:
 - trigger deployment manually from GitHub Actions (`workflow_dispatch`)
 - run tests first on GitHub-hosted Linux
@@ -124,6 +129,22 @@ The Fedora runner will:
 - apply migrations
 - restart `bot` and `scheduler`
 - run `doctor` checks
+
+Useful follow-up checks on the Fedora host:
+
+```bash
+docker compose logs --tail=100 bot
+docker compose logs --tail=100 scheduler
+docker compose run --rm bot doctor
+docker compose run --rm bot scheduler-doctor
+```
+
+If you want to diagnose `/ask` behavior directly on the Fedora machine:
+
+```bash
+docker compose run --rm bot admin ask --user <telegram_user_id> --verbose "what can you do?"
+docker compose run --rm bot admin ask --user <telegram_user_id> --debug-prompts --verbose "which month did I solve the most questions?"
+```
 
 The database stays intact because Docker Compose uses the named volume `leetcoach_data`.
 

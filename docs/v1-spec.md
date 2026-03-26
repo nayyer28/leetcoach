@@ -1,5 +1,11 @@
 # leetcoach v1 Data and Behavior Spec
 
+Status note:
+- this is a historical v1 specification
+- for the current live app contract, use:
+  - [`docs/usage.md`](docs/usage.md)
+  - [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
+
 ## Scope (v1)
 
 This spec covers only:

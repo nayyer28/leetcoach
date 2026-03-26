@@ -1,23 +1,29 @@
-# Usage Guide (Docker-First)
+# Usage Guide
 
-This is the primary runbook for running leetcoach.
-Docker is the main operational path, but the CLI commands described here are the same commands the containers run internally.
+This is the main runbook for running, debugging, and deploying leetcoach.
 
-## Prerequisites
+The app has three practical interfaces today:
+- Telegram bot for normal usage
+- scheduler worker for outbound reminders
+- admin CLI for diagnostics and local developer workflows
+
+Docker Compose is the normal runtime path, but the same `lch` commands can also be run directly on a machine with the project environment loaded.
+
+## 1. Prerequisites
 
 - Docker + Docker Compose v2
 - Telegram bot token from `@BotFather`
-- (optional, for quiz) Gemini API key
+- optional Gemini API key for `/quiz` and `/ask`
 
-## Configure Environment
+## 2. Configure Environment
 
-Create your local env file:
+Create your local runtime env file:
 
 ```bash
 cp .bot.local.env.example .env
 ```
 
-Set at least these values in `.env`:
+Minimum useful values:
 
 ```env
 LEETCOACH_TELEGRAM_BOT_TOKEN=<your-token>
@@ -29,138 +35,143 @@ LEETCOACH_DB_PATH=/data/leetcoach.db
 ```
 
 Notes:
-- if `LEETCOACH_ALLOWED_USER_IDS` is empty, bot is open mode
-- set `GEMINI_API_KEY` to enable `/quiz` and `/reveal`
+- empty `LEETCOACH_ALLOWED_USER_IDS` means open mode
+- `GEMINI_API_KEY` enables `/quiz`, `/reveal`, and `/ask`
+- the container path for the SQLite DB is normally `/data/leetcoach.db`
 
-## Start leetcoach
+## 3. Start The App
 
-Apply DB migrations first:
+Apply migrations first:
 
 ```bash
 docker compose run --rm bot migrate
 ```
 
-Start bot + scheduler:
+Then start the bot and scheduler:
 
 ```bash
 docker compose up -d bot scheduler
 ```
 
-Check logs:
+Inspect logs:
 
 ```bash
 docker compose logs -f bot
 docker compose logs -f scheduler
 ```
 
-What these services do:
-- `bot` runs long-polling Telegram handlers
-- `scheduler` runs outbound reminder selection/sending every 60 seconds and only dispatches during the configured local reminder hour
+What each service does:
+- `bot` runs Telegram long polling and all inbound commands
+- `scheduler` scans the review queue and sends reminder messages during the configured reminder hour
 
-## Telegram Commands
+## 4. Telegram Usage
 
-After startup, open your bot and run:
+Open the bot and start with:
 
 ```text
 /start
+/hi
 ```
 
-Command contract lives in:
+Current Telegram surface:
+- `/start`, `/register`, `/hi`
+- `/log`, `/log show [n]`
+- `/ask <question>`
+- `/due`, `/reviewed P1`
+- `/remind`, `/remind last`, `/remind new`, `/remind count <n>`, `/remind time <hour>`
+- `/list`, `/pattern <text>`, `/search <text>`
+- `/show P1`, `/edit P1`
+- `/quiz`, `/quiz <topic>`, `/reveal`
+
+See the full live contract here:
 - [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
 
-Current commands:
-- `/start`, `/register`, `/help`, `/hi`
-- `/log`, `/log show [n]`, `/due`, `/reviewed <token>`, `/remind`
-- `/search <query>`, `/list`, `/pattern <pattern-substring>`, `/show <token>`
-- `/quiz [topic]`, `/reveal`
+## 5. Useful CLI Commands
 
-## Operational Commands (via container)
+These are the same commands the containers run internally:
 
-Run one-off commands:
+```bash
+lch doctor
+lch scheduler-doctor
+lch migrate
+lch test
+lch test unit
+lch test integration
+lch bot
+lch scheduler --once
+```
+
+Run them inside Docker when you want to use the same runtime environment as production:
 
 ```bash
 docker compose run --rm bot doctor
 docker compose run --rm bot scheduler-doctor
 docker compose run --rm bot scheduler --once
-docker compose run --rm bot test
 docker compose run --rm bot test unit
 docker compose run --rm bot test integration
 ```
 
-Open a shell in the app container:
+## 6. Admin CLI Diagnostics
+
+For local `/ask` debugging, use:
 
 ```bash
-docker compose exec bot sh
+lch admin ask --user <telegram_user_id> "what can you do?"
 ```
 
-Then run the same CLI directly inside the container:
+Helpful variants:
 
 ```bash
-lch --help
-lch doctor
-lch scheduler-doctor
-lch migrate
+lch admin ask --user <telegram_user_id> --verbose "what did you remind me last?"
+lch admin ask --user <telegram_user_id> --json-output "show my latest 5 problems"
+lch admin ask --user <telegram_user_id> --debug-prompts --verbose "which month did I solve the most questions?"
 ```
 
-## Doctor Commands
+What this does:
+- uses the same ask service as Telegram `/ask`
+- uses the same Gemini provider path as the bot
+- prints ask trace events in the terminal when `--verbose` is used
+- can include prompt/raw model text when `--debug-prompts` is enabled
 
-General environment + Telegram API check:
+Use this path when you want to inspect:
+- which tools the model requested
+- what arguments were sent
+- what tool results came back
+- where the model loop or final answer went wrong
 
-```bash
-docker compose run --rm bot doctor
-```
+## 7. Review And Reminder Behavior
 
-This checks:
-- current DB path
-- configured timezone
-- count of allowed Telegram user IDs
-- presence of Telegram bot token
-- live `getMe` reachability against Telegram API
+Reminder behavior today:
+- reminders are sent by the scheduler, not by an inbound Telegram command
+- the scheduler respects the configured local reminder hour
+- the scheduler respects user-specific daily max overrides when present
+- reminded problems stay at the front until you mark them reviewed
+- once marked reviewed, the problem moves to the back of the queue
+- the scheduler no longer sends a separate daily header message before reminder entries
 
-Scheduler preflight check:
+Reminder-related commands:
+- `/due` shows outstanding reminded items
+- `/reviewed P1` marks one due item reviewed
+- `/remind` shows your effective reminder settings
+- `/remind last` shows the last reminder batch
+- `/remind new` sends one extra candidate immediately
 
-```bash
-docker compose run --rm bot scheduler-doctor
-```
+## 8. Logging And Editing UX
 
-This checks:
-- current DB path
-- `LEETCOACH_REMINDER_HOUR_LOCAL`
-- `LEETCOACH_REMINDER_DAILY_MAX`
-- presence of Telegram bot token
-- required DB tables for scheduler execution
+Current problem-entry UX:
+- `/log` is a guided multi-step flow
+- after all fields are collected, the bot shows a review summary
+- you can `Save`, `Edit`, or `Cancel`
+- editing during log uses field pickers and current-value prompts
 
-Reminder settings and review queue:
-- `LEETCOACH_REMINDER_DAILY_MAX` is the app-wide default
-- `LEETCOACH_REMINDER_HOUR_LOCAL` is the app-wide default reminder hour
-- `/remind` shows your current effective reminder settings
-- `/remind count <n>` sets your personal daily reminder count (`1` to `10`)
-- `/remind time <hour>` sets your personal reminder hour (`0` to `23`)
-- `/remind last` shows the most recent reminder batch sent to you
-- `/remind new` sends one additional review candidate immediately
-- `/due` shows problems that were reminded but not yet marked reviewed
-- `/reviewed <token>` marks a problem reviewed and moves it to the back of your review queue
-- `/log show [n]` shows the most recently logged `n` problems without starting the guided log flow
+Stable problem IDs:
+- user-facing problem references are deterministic per user
+- examples: `P1`, `P2`, `P3`
+- these IDs are used by `/show`, `/edit`, `/reviewed`, `/due`, `/list`, and `/ask`
 
-Run one scheduler tick manually:
+## 9. Notion Import
 
-```bash
-docker compose run --rm bot scheduler --once
-```
-
-This is useful when you want to inspect scheduler behavior without waiting for the loop.
-
-## Logging UX Notes
-
-- `/log` now offers inline button choices for difficulty and known roadmap patterns
-- `/log show [n]` is a read-only shortcut, not part of the guided log conversation
-- typed difficulty is accepted only for exact values: `easy`, `medium`, `hard` (case-insensitive)
-- typed pattern is accepted only if it resolves to a known roadmap pattern
-- common aliases like `tree` normalize to `Trees`
-- LeetCode and NeetCode inputs accept either the full problem URL or the raw slug
-- `/list` renders problems oldest-first within each pattern section
-
-Notion import:
+Dry-run or apply a Notion import:
 
 ```bash
 docker compose run --rm bot import-notion \
@@ -169,38 +180,13 @@ docker compose run --rm bot import-notion \
   --apply
 ```
 
-## Deploy App (Recipe)
+## 10. Data And Persistence
 
-Use this sequence on any host (local machine, VM, home server):
+- Docker Compose uses the named volume `leetcoach_data`
+- the live SQLite DB inside the container is normally `/data/leetcoach.db`
+- container restarts do not wipe the DB because the named volume persists separately
 
-1. Clone repo and enter directory.
-2. Create env file:
-   - `cp .bot.local.env.example .env`
-   - fill required values
-3. Prepare persistent local directory:
-   - `mkdir -p .local`
-4. Build and migrate:
-   - `docker compose build`
-   - `docker compose run --rm bot migrate`
-5. Start services:
-   - `docker compose up -d bot scheduler`
-6. Verify health:
-   - `docker compose run --rm bot doctor`
-   - `docker compose run --rm bot scheduler-doctor`
-7. Verify runtime:
-   - `docker compose logs -f bot`
-   - `docker compose logs -f scheduler`
-
-For GitHub Actions based deployment onto your Fedora laptop, see:
-- [`docs/deploy-fedora-runner.md`](docs/deploy-fedora-runner.md)
-
-## Data and Persistence
-
-- Compose uses a named Docker volume: `leetcoach_data`.
-- Inside the containers, the SQLite file path is `/data/leetcoach.db`.
-- If containers restart, data remains because the named volume persists independently of the containers.
-
-Export the active Docker-managed DB to a normal file:
+Export the Docker-managed DB to a normal file:
 
 ```bash
 docker run --rm \
@@ -209,57 +195,64 @@ docker run --rm \
   alpine sh -c 'cp /from/leetcoach.db /to/leetcoach.volume.db'
 ```
 
-Back up a file-based copy:
-
-```bash
-cp leetcoach.volume.db "leetcoach.volume.db.backup.$(date +%Y%m%d-%H%M%S)"
-```
-
-## Inspect SQLite Directly
-
-Inspect an exported DB file:
+Inspect it directly:
 
 ```bash
 sqlite3 leetcoach.volume.db ".tables"
 sqlite3 leetcoach.volume.db "SELECT version FROM schema_migrations ORDER BY version;"
-sqlite3 leetcoach.volume.db ".schema active_quiz_sessions"
 sqlite3 leetcoach.volume.db "SELECT count(*) FROM users;"
 sqlite3 leetcoach.volume.db "SELECT count(*) FROM user_problems;"
-sqlite3 leetcoach.volume.db "SELECT id, queue_position, review_count, last_review_requested_at, last_reviewed_at FROM user_problems ORDER BY user_id, queue_position LIMIT 20;"
-sqlite3 leetcoach.volume.db "SELECT count(*) FROM active_quiz_sessions;"
 ```
 
-Inspect the live DB by opening a shell in the container first:
+## 11. Deploy Recipe
+
+Typical host deployment sequence:
+
+1. clone repo
+2. create `.env`
+3. run migrations
+4. start `bot` and `scheduler`
+5. run doctor checks
+6. inspect logs
+
+Example:
 
 ```bash
-docker compose exec bot sh
-sqlite3 /data/leetcoach.db ".tables"
-sqlite3 /data/leetcoach.db "SELECT version FROM schema_migrations ORDER BY version;"
+docker compose build
+docker compose run --rm bot migrate
+docker compose up -d bot scheduler
+docker compose run --rm bot doctor
+docker compose run --rm bot scheduler-doctor
+docker compose logs -f bot
+docker compose logs -f scheduler
 ```
 
-## Troubleshooting
+For the Fedora self-hosted GitHub Actions deployment path, see:
+- [`docs/deploy-fedora-runner.md`](docs/deploy-fedora-runner.md)
 
-- `telegram.error.Conflict`:
+## 12. Troubleshooting
+
+- `telegram.error.Conflict`
   - another polling process is already using the bot token
   - stop duplicate bot instances
 
-- `no such table ...`:
-  - migrations were not applied to mounted DB
+- `no such table ...`
+  - migrations were not applied to the mounted DB
   - run `docker compose run --rm bot migrate`
 
-- DB file looks stale or missing expected quiz data:
-  - confirm you are inspecting the Docker volume DB, not an older host-side copy
-  - export the current volume DB and inspect `schema_migrations`
-  - `active_quiz_sessions` exists only after migration `0003_active_quiz_sessions.sql`
+- `Quiz provider is not configured`
+  - `GEMINI_API_KEY` is missing
+  - restart the bot after setting it
 
-- `Quiz provider is not configured`:
-  - missing `GEMINI_API_KEY` in `.env`
-  - restart bot after setting key
+- `/ask` behaves strangely
+  - use `lch admin ask --user ... --verbose`
+  - add `--debug-prompts` if you need raw prompt/model text
+  - inspect the ask trace before guessing
 
-- no reminders sent:
-  - check local-hour gate in `.env` (`LEETCOACH_REMINDER_HOUR_LOCAL`)
-  - run one tick manually: `docker compose run --rm bot scheduler --once`
+- reminders are not being sent
+  - check `LEETCOACH_REMINDER_HOUR_LOCAL`
+  - run `docker compose run --rm bot scheduler --once`
+  - run `docker compose run --rm bot scheduler-doctor`
 
-- want to confirm the exact DB path the app is using:
+- want to confirm the DB path in use
   - run `docker compose run --rm bot doctor`
-  - current Compose wiring should report `/data/leetcoach.db`

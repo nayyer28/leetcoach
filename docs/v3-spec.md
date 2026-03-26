@@ -1,5 +1,12 @@
 # leetcoach v3 Spec (Draft)
 
+Status note:
+- this is a planning draft
+- parts of its observability direction are now implemented, but it is not the live usage contract
+- for current operation and interfaces, use:
+  - [`docs/usage.md`](docs/usage.md)
+  - [`docs/deploy-fedora-runner.md`](docs/deploy-fedora-runner.md)
+
 ## Goal
 
 Make leetcoach production-ready for low-cost always-on deployment with clear observability.
