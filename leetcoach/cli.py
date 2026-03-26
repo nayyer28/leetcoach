@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from urllib import error, request
 
 import click
 
+from leetcoach.app.application.ask.ask_service import AskServiceResult, ask_question
 from leetcoach.app.bootstrap.bootstrap import run
 from leetcoach.app.infrastructure.config.app_config import load_config
 from leetcoach.app.infrastructure.config.env import load_environment
+from leetcoach.app.infrastructure.llm.gemini_provider import (
+    DEFAULT_GEMINI_MODEL_PRIORITY,
+    GeminiProvider,
+)
 from leetcoach.app.interface.scheduler.runner import (
     run_scheduler_loop,
     run_scheduler_once,
@@ -214,6 +220,106 @@ def doctor_command() -> None:
     click.echo(f"- telegram_getMe: {status} ({detail})")
 
     raise SystemExit(0 if ok else 1)
+
+
+def _render_ask_trace(result: AskServiceResult) -> None:
+    click.echo(f"request_id: {result.request_id}")
+    click.echo(f"model: {result.model}")
+    for event in result.trace_events:
+        step_label = "-" if event.step is None else str(event.step)
+        click.echo(f"[step {step_label}] {event.event}")
+        click.echo(json.dumps(event.payload, indent=2, ensure_ascii=True, sort_keys=True))
+
+
+@cli.group("admin")
+def admin_group() -> None:
+    """Developer/admin interfaces into app services."""
+
+
+@admin_group.command("ask")
+@click.option(
+    "--user",
+    "telegram_user_id",
+    required=True,
+    help="Telegram user id whose data should be queried.",
+)
+@click.option("--verbose", is_flag=True, help="Print ask trace events to the terminal.")
+@click.option("--json-output", is_flag=True, help="Print the full ask result as JSON.")
+@click.option(
+    "--debug-prompts",
+    is_flag=True,
+    help="Include prompt/raw-model text in ask trace output.",
+)
+@click.argument("question", nargs=-1, required=True)
+def admin_ask_command(
+    telegram_user_id: str,
+    verbose: bool,
+    json_output: bool,
+    debug_prompts: bool,
+    question: tuple[str, ...],
+) -> None:
+    """Run the ask service locally for diagnostics."""
+    cfg = load_config()
+    if not cfg.gemini_api_key:
+        raise click.ClickException("GEMINI_API_KEY is not configured")
+
+    provider = GeminiProvider(
+        api_key=cfg.gemini_api_key,
+        model_priority=DEFAULT_GEMINI_MODEL_PRIORITY,
+        max_transient_retries=1,
+    )
+    prompt_debug_previous = os.environ.get("LEETCOACH_ASK_DEBUG_PROMPTS")
+    if debug_prompts:
+        os.environ["LEETCOACH_ASK_DEBUG_PROMPTS"] = "1"
+    try:
+        result = ask_question(
+            db_path=cfg.db_path,
+            telegram_user_id=telegram_user_id,
+            question=" ".join(question).strip(),
+            provider=provider,
+        )
+    finally:
+        if debug_prompts:
+            if prompt_debug_previous is None:
+                os.environ.pop("LEETCOACH_ASK_DEBUG_PROMPTS", None)
+            else:
+                os.environ["LEETCOACH_ASK_DEBUG_PROMPTS"] = prompt_debug_previous
+
+    if json_output:
+        click.echo(
+            json.dumps(
+                {
+                    "answer": result.answer,
+                    "model": result.model,
+                    "request_id": result.request_id,
+                    "tool_executions": [
+                        {
+                            "tool_name": execution.tool_name,
+                            "arguments": execution.arguments,
+                            "result": execution.result,
+                        }
+                        for execution in result.tool_executions
+                    ],
+                    "trace_events": [
+                        {
+                            "event": event.event,
+                            "step": event.step,
+                            "payload": event.payload,
+                        }
+                        for event in result.trace_events
+                    ],
+                },
+                indent=2,
+                ensure_ascii=True,
+                sort_keys=True,
+            )
+        )
+        return
+
+    if verbose:
+        _render_ask_trace(result)
+        click.echo("")
+    click.echo(result.answer)
 
 
 @cli.command("import-notion")
