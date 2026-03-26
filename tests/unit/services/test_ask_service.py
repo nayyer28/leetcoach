@@ -13,21 +13,67 @@ from leetcoach.app.misc.migrate import migrate_database
 
 
 class AskServiceUnitTest(unittest.TestCase):
-    def test_ask_question_records_failure_trace_when_steps_exhausted(self) -> None:
+    def test_ask_question_rejects_duplicate_tool_call_early(self) -> None:
         responses = iter(
             [
                 """{
                   "type": "tool_call",
                   "tool_name": "describe_ask_capabilities",
-                  "arguments": {
-                    "focus": "overview"
-                  }
+                  "arguments": {}
                 }""",
                 """{
                   "type": "tool_call",
                   "tool_name": "describe_ask_capabilities",
+                  "arguments": {}
+                }""",
+            ]
+        )
+
+        def transport(model: str, prompt: str) -> str:
+            return next(responses)
+
+        provider = GeminiProvider(
+            api_key="dummy",
+            model_priority=("gemini-2.5-flash-lite",),
+            transport=transport,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            with self.assertRaisesRegex(
+                AskServiceError,
+                "repeated the same tool call",
+            ) as exc_ctx:
+                ask_question(
+                    db_path=db_path,
+                    telegram_user_id="u-1",
+                    question="What can you do?",
+                    provider=provider,
+                    max_steps=5,
+                )
+
+        exc = exc_ctx.exception
+        self.assertEqual(len(exc.tool_executions), 1)
+        self.assertEqual(exc.tool_executions[0].tool_name, "describe_ask_capabilities")
+        self.assertEqual(exc.trace_events[-1].event, "ask.fail")
+        self.assertEqual(exc.trace_events[-1].payload["reason"], "duplicate_tool_call")
+
+    def test_ask_question_records_failure_trace_when_steps_exhausted(self) -> None:
+        responses = iter(
+            [
+                """{
+                  "type": "tool_call",
+                  "tool_name": "get_due_reviews",
                   "arguments": {
-                    "focus": "overview"
+                    "limit": 1
+                  }
+                }""",
+                """{
+                  "type": "tool_call",
+                  "tool_name": "get_last_reminder_batch",
+                  "arguments": {
+                    "limit": 1
                   }
                 }""",
             ]

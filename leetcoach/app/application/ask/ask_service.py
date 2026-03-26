@@ -148,6 +148,18 @@ def _summarize_tool_result(result: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
+def _has_duplicate_tool_call(
+    tool_executions: list[AskToolExecution],
+    *,
+    tool_name: str,
+    arguments: dict[str, Any],
+) -> bool:
+    return any(
+        execution.tool_name == tool_name and execution.arguments == arguments
+        for execution in tool_executions
+    )
+
+
 def _record_trace(
     trace_events: list[AskTraceEvent],
     *,
@@ -261,6 +273,9 @@ def _build_prompt(
         '{"type":"tool_call","tool_name":"<tool_name>","arguments":{...}}\n'
         '{"type":"final_answer","answer":"..."}\n'
         "Use the tool when data lookup or aggregation is needed.\n"
+        "If previous tool executions already contain enough information to answer, return final_answer.\n"
+        "Never call the same tool twice with the same arguments in a single request.\n"
+        "After describe_ask_capabilities returns, respond with final_answer instead of calling it again.\n"
         "If the user asks what /ask can do, asks for examples, or asks how to use it, call describe_ask_capabilities.\n"
         "Do not invent results.\n"
         "Useful examples:\n"
@@ -379,6 +394,33 @@ def ask_question(
                     raise ValueError("tool_call must include a non-empty tool_name")
                 if not isinstance(arguments, dict):
                     raise ValueError("tool_call arguments must be an object")
+                if _has_duplicate_tool_call(
+                    tool_executions,
+                    tool_name=tool_name,
+                    arguments=arguments,
+                ):
+                    _record_trace(
+                        trace_events,
+                        request_id=request_id,
+                        event="ask.fail",
+                        step=step,
+                        payload={
+                            "reason": "duplicate_tool_call",
+                            "tool_name": tool_name,
+                            "arguments": arguments,
+                            "tool_execution_count": len(tool_executions),
+                            "last_model": last_model,
+                        },
+                    )
+                    raise AskServiceError(
+                        message=(
+                            "LLM repeated the same tool call without producing a final answer"
+                        ),
+                        request_id=request_id,
+                        model=last_model,
+                        tool_executions=tool_executions,
+                        trace_events=trace_events,
+                    )
                 _record_trace(
                     trace_events,
                     request_id=request_id,
