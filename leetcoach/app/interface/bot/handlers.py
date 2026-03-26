@@ -32,7 +32,11 @@ from leetcoach.app.application.problems.browse_problems import (
     list_recent_problems,
     search_problems,
 )
-from leetcoach.app.application.ask.ask_service import AskServiceError, ask_question
+from leetcoach.app.application.ask.ask_service import (
+    AskServiceError,
+    AskServiceResult,
+    ask_question,
+)
 from leetcoach.app.application.problems.log_problem import LogProblemInput, log_problem
 from leetcoach.app.application.quiz.answer_quiz import answer_quiz
 from leetcoach.app.application.quiz.common import (
@@ -118,6 +122,20 @@ from leetcoach.app.interface.bot.views import (
 
 
 LOGGER = logging.getLogger("leetcoach.telegram")
+
+
+def _render_ask_result_text(result: AskServiceResult) -> str:
+    parts: list[str] = []
+    if result.response_type == "final_answer" and result.answer:
+        parts.append(result.answer)
+        parts.append(f"Confidence: {result.confidence}")
+        parts.append(f"Tool fit: {result.tool_fit}")
+        parts.append(f"Answer basis: {result.answer_basis}")
+        parts.append(f"Comments: {result.comments}")
+        return "\n\n".join(parts)
+    if result.response_type == "cannot_answer_confidently":
+        return f"I cannot answer this confidently right now.\n\nComments: {result.comments}"
+    return result.answer or ""
 BOT_BOOTSTRAP_RETRIES = 5
 
 DIFFICULTY_OPTIONS = [["Easy", "Medium", "Hard"]]
@@ -513,7 +531,7 @@ async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
 
-    await update.message.reply_text(result.answer)
+    await update.message.reply_text(_render_ask_result_text(result))
 
 
 async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

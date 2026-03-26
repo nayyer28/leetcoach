@@ -43,9 +43,14 @@ class TelegramBotQuizFlowUnitTest(unittest.IsolatedAsyncioTestCase):
             patch(
                 "leetcoach.app.interface.bot.handlers.ask_question",
                 return_value=AskServiceResult(
-                    answer="You have solved 3 easy problems.",
+                    response_type="final_answer",
                     model="gemini-2.5-flash-lite",
                     tool_executions=[],
+                    answer="You have solved 3 easy problems.",
+                    confidence="high",
+                    tool_fit="exact",
+                    answer_basis="direct_tool_result",
+                    comments="I used the aggregate tool result directly.",
                 ),
             ) as ask_mock,
         ):
@@ -53,7 +58,13 @@ class TelegramBotQuizFlowUnitTest(unittest.IsolatedAsyncioTestCase):
 
         context.bot.send_chat_action.assert_awaited_once()
         ask_mock.assert_called_once()
-        message.reply_text.assert_awaited_once_with("You have solved 3 easy problems.")
+        message.reply_text.assert_awaited_once_with(
+            "You have solved 3 easy problems.\n\n"
+            "Confidence: high\n\n"
+            "Tool fit: exact\n\n"
+            "Answer basis: direct_tool_result\n\n"
+            "Comments: I used the aggregate tool result directly."
+        )
 
     async def test_ask_command_requires_question(self) -> None:
         message = SimpleNamespace(reply_text=AsyncMock())
@@ -128,6 +139,52 @@ class TelegramBotQuizFlowUnitTest(unittest.IsolatedAsyncioTestCase):
             "⚠️ Could not answer that right now: LLM did not finish within max_steps\n"
             "Request ID: req-ask-1\n"
             "Try again shortly."
+        )
+
+    async def test_ask_command_can_render_cannot_answer_confidently(self) -> None:
+        message = SimpleNamespace(reply_text=AsyncMock())
+        update = SimpleNamespace(
+            message=message,
+            effective_chat=SimpleNamespace(id=123),
+            effective_user=SimpleNamespace(id=456),
+        )
+        context = SimpleNamespace(
+            args=["which", "month", "was", "best?"],
+            user_data={},
+            application=SimpleNamespace(
+                bot_data={
+                    "config": AppConfig(
+                        environment="development",
+                        log_level="INFO",
+                        timezone="UTC",
+                        db_path=".local/leetcoach.db",
+                        telegram_bot_token="token",
+                        gemini_api_key="gemini-key",
+                        allowed_user_ids=frozenset(),
+                    ),
+                    "ask_provider": object(),
+                }
+            ),
+            bot=SimpleNamespace(send_chat_action=AsyncMock()),
+        )
+
+        with (
+            patch("leetcoach.app.interface.bot.handlers._interrupt_quiz_if_needed"),
+            patch(
+                "leetcoach.app.interface.bot.handlers.ask_question",
+                return_value=AskServiceResult(
+                    response_type="cannot_answer_confidently",
+                    model="gemini-2.5-flash-lite",
+                    tool_executions=[],
+                    comments="The current tools do not support month-level grouping.",
+                ),
+            ),
+        ):
+            await ask_command(update, context)
+
+        message.reply_text.assert_awaited_once_with(
+            "I cannot answer this confidently right now.\n\n"
+            "Comments: The current tools do not support month-level grouping."
         )
 
     async def test_quiz_command_shows_typing_before_generation(self) -> None:

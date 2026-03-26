@@ -269,8 +269,9 @@ def _render_ask_failure(exc: AskServiceError, *, json_output: bool, verbose: boo
     if verbose:
         _render_ask_trace(
             AskServiceResult(
-                answer="",
+                response_type="failure",
                 model=exc.model,
+                answer="",
                 request_id=exc.request_id,
                 tool_executions=exc.tool_executions,
                 trace_events=exc.trace_events,
@@ -278,6 +279,20 @@ def _render_ask_failure(exc: AskServiceError, *, json_output: bool, verbose: boo
         )
         click.echo("")
     raise click.ClickException(str(exc))
+
+
+def _render_ask_result_text(result: AskServiceResult) -> str:
+    parts: list[str] = []
+    if result.response_type == "final_answer" and result.answer:
+        parts.append(result.answer)
+        parts.append(f"Confidence: {result.confidence}")
+        parts.append(f"Tool fit: {result.tool_fit}")
+        parts.append(f"Answer basis: {result.answer_basis}")
+        parts.append(f"Comments: {result.comments}")
+        return "\n\n".join(parts)
+    if result.response_type == "cannot_answer_confidently":
+        return f"I cannot answer this confidently right now.\n\nComments: {result.comments}"
+    return result.answer or ""
 
 
 @cli.group("admin")
@@ -342,7 +357,12 @@ def admin_ask_command(
         click.echo(
             json.dumps(
                 {
+                    "response_type": result.response_type,
                     "answer": result.answer,
+                    "confidence": result.confidence,
+                    "tool_fit": result.tool_fit,
+                    "answer_basis": result.answer_basis,
+                    "comments": result.comments,
                     "model": result.model,
                     "request_id": result.request_id,
                     "tool_executions": [
@@ -372,7 +392,7 @@ def admin_ask_command(
     if verbose:
         _render_ask_trace(result)
         click.echo("")
-    click.echo(result.answer)
+    click.echo(_render_ask_result_text(result))
 
 
 @cli.command("import-notion")
