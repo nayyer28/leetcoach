@@ -8,7 +8,11 @@ from urllib import error, request
 
 import click
 
-from leetcoach.app.application.ask.ask_service import AskServiceResult, ask_question
+from leetcoach.app.application.ask.ask_service import (
+    AskServiceError,
+    AskServiceResult,
+    ask_question,
+)
 from leetcoach.app.bootstrap.bootstrap import run
 from leetcoach.app.infrastructure.config.app_config import load_config
 from leetcoach.app.infrastructure.config.env import load_environment
@@ -231,6 +235,51 @@ def _render_ask_trace(result: AskServiceResult) -> None:
         click.echo(json.dumps(event.payload, indent=2, ensure_ascii=True, sort_keys=True))
 
 
+def _render_ask_failure(exc: AskServiceError, *, json_output: bool, verbose: bool) -> None:
+    if json_output:
+        click.echo(
+            json.dumps(
+                {
+                    "error": str(exc),
+                    "model": exc.model,
+                    "request_id": exc.request_id,
+                    "tool_executions": [
+                        {
+                            "tool_name": execution.tool_name,
+                            "arguments": execution.arguments,
+                            "result": execution.result,
+                        }
+                        for execution in exc.tool_executions
+                    ],
+                    "trace_events": [
+                        {
+                            "event": event.event,
+                            "step": event.step,
+                            "payload": event.payload,
+                        }
+                        for event in exc.trace_events
+                    ],
+                },
+                indent=2,
+                ensure_ascii=True,
+                sort_keys=True,
+            )
+        )
+        return
+    if verbose:
+        _render_ask_trace(
+            AskServiceResult(
+                answer="",
+                model=exc.model,
+                request_id=exc.request_id,
+                tool_executions=exc.tool_executions,
+                trace_events=exc.trace_events,
+            )
+        )
+        click.echo("")
+    raise click.ClickException(str(exc))
+
+
 @cli.group("admin")
 def admin_group() -> None:
     """Developer/admin interfaces into app services."""
@@ -272,12 +321,16 @@ def admin_ask_command(
     if debug_prompts:
         os.environ["LEETCOACH_ASK_DEBUG_PROMPTS"] = "1"
     try:
-        result = ask_question(
-            db_path=cfg.db_path,
-            telegram_user_id=telegram_user_id,
-            question=" ".join(question).strip(),
-            provider=provider,
-        )
+        try:
+            result = ask_question(
+                db_path=cfg.db_path,
+                telegram_user_id=telegram_user_id,
+                question=" ".join(question).strip(),
+                provider=provider,
+            )
+        except AskServiceError as exc:
+            _render_ask_failure(exc, json_output=json_output, verbose=verbose)
+            return
     finally:
         if debug_prompts:
             if prompt_debug_previous is None:

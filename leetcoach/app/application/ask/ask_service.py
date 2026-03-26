@@ -65,6 +65,18 @@ class AskTraceEvent:
     payload: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class AskServiceError(Exception):
+    message: str
+    request_id: str
+    model: str
+    tool_executions: list[AskToolExecution] = field(default_factory=list)
+    trace_events: list[AskTraceEvent] = field(default_factory=list)
+
+    def __str__(self) -> str:
+        return self.message
+
+
 def _extract_json_payload(text: str) -> dict[str, Any]:
     body = text.strip()
     if body.startswith("```"):
@@ -299,116 +311,141 @@ def ask_question(
         },
     )
 
-    for step in range(1, max_steps + 1):
-        prompt = _build_prompt(question=question, tool_executions=tool_executions)
-        if prompt_debug:
+    try:
+        for step in range(1, max_steps + 1):
+            prompt = _build_prompt(question=question, tool_executions=tool_executions)
+            if prompt_debug:
+                _record_trace(
+                    trace_events,
+                    request_id=request_id,
+                    event="ask.prompt",
+                    step=step,
+                    payload={"prompt": _truncate_text(prompt, 4000)},
+                )
+            llm_result: GeminiGenerateResult = provider.generate_text(prompt)
+            last_model = llm_result.model
             _record_trace(
                 trace_events,
                 request_id=request_id,
-                event="ask.prompt",
-                step=step,
-                payload={"prompt": _truncate_text(prompt, 4000)},
-            )
-        llm_result: GeminiGenerateResult = provider.generate_text(prompt)
-        last_model = llm_result.model
-        _record_trace(
-            trace_events,
-            request_id=request_id,
-            event="ask.model_response",
-            step=step,
-            payload={
-                "model": last_model,
-                "raw_text": _truncate_text(llm_result.text, 2000)
-                if prompt_debug
-                else _truncate_text(llm_result.text, 300),
-            },
-        )
-        payload = _extract_json_payload(llm_result.text)
-        response_type = payload.get("type")
-        _record_trace(
-            trace_events,
-            request_id=request_id,
-            event="ask.parsed_response",
-            step=step,
-            payload={
-                "response_type": str(response_type),
-                "payload_keys": sorted(payload.keys()),
-            },
-        )
-
-        if response_type == "final_answer":
-            answer = payload.get("answer")
-            if not isinstance(answer, str) or not answer.strip():
-                raise ValueError("final_answer response must include a non-empty answer")
-            _record_trace(
-                trace_events,
-                request_id=request_id,
-                event="ask.final_answer",
+                event="ask.model_response",
                 step=step,
                 payload={
                     "model": last_model,
-                    "answer": _truncate_text(answer.strip(), 500),
-                    "tool_execution_count": len(tool_executions),
+                    "raw_text": _truncate_text(llm_result.text, 2000)
+                    if prompt_debug
+                    else _truncate_text(llm_result.text, 300),
                 },
             )
-            return AskServiceResult(
-                answer=answer.strip(),
-                model=last_model,
-                tool_executions=tool_executions,
+            payload = _extract_json_payload(llm_result.text)
+            response_type = payload.get("type")
+            _record_trace(
+                trace_events,
                 request_id=request_id,
-                trace_events=trace_events,
+                event="ask.parsed_response",
+                step=step,
+                payload={
+                    "response_type": str(response_type),
+                    "payload_keys": sorted(payload.keys()),
+                },
             )
 
-        if response_type == "tool_call":
-            tool_name = payload.get("tool_name")
-            arguments = payload.get("arguments")
-            if not isinstance(tool_name, str) or not tool_name.strip():
-                raise ValueError("tool_call must include a non-empty tool_name")
-            if not isinstance(arguments, dict):
-                raise ValueError("tool_call arguments must be an object")
-            _record_trace(
-                trace_events,
-                request_id=request_id,
-                event="ask.tool_call",
-                step=step,
-                payload={
-                    "tool_name": tool_name,
-                    "arguments": arguments,
-                },
-            )
-            tool_result = _execute_tool(
-                tool_name=tool_name,
-                arguments=arguments,
-                db_path=db_path,
-                telegram_user_id=telegram_user_id,
-            )
-            _record_trace(
-                trace_events,
-                request_id=request_id,
-                event="ask.tool_result",
-                step=step,
-                payload={
-                    "tool_name": tool_name,
-                    "result_summary": _summarize_tool_result(tool_result),
-                },
-            )
-            tool_executions.append(
-                AskToolExecution(
+            if response_type == "final_answer":
+                answer = payload.get("answer")
+                if not isinstance(answer, str) or not answer.strip():
+                    raise ValueError("final_answer response must include a non-empty answer")
+                _record_trace(
+                    trace_events,
+                    request_id=request_id,
+                    event="ask.final_answer",
+                    step=step,
+                    payload={
+                        "model": last_model,
+                        "answer": _truncate_text(answer.strip(), 500),
+                        "tool_execution_count": len(tool_executions),
+                    },
+                )
+                return AskServiceResult(
+                    answer=answer.strip(),
+                    model=last_model,
+                    tool_executions=tool_executions,
+                    request_id=request_id,
+                    trace_events=trace_events,
+                )
+
+            if response_type == "tool_call":
+                tool_name = payload.get("tool_name")
+                arguments = payload.get("arguments")
+                if not isinstance(tool_name, str) or not tool_name.strip():
+                    raise ValueError("tool_call must include a non-empty tool_name")
+                if not isinstance(arguments, dict):
+                    raise ValueError("tool_call arguments must be an object")
+                _record_trace(
+                    trace_events,
+                    request_id=request_id,
+                    event="ask.tool_call",
+                    step=step,
+                    payload={
+                        "tool_name": tool_name,
+                        "arguments": arguments,
+                    },
+                )
+                tool_result = _execute_tool(
                     tool_name=tool_name,
                     arguments=arguments,
-                    result=tool_result,
+                    db_path=db_path,
+                    telegram_user_id=telegram_user_id,
                 )
-            )
-            continue
+                _record_trace(
+                    trace_events,
+                    request_id=request_id,
+                    event="ask.tool_result",
+                    step=step,
+                    payload={
+                        "tool_name": tool_name,
+                        "result_summary": _summarize_tool_result(tool_result),
+                    },
+                )
+                tool_executions.append(
+                    AskToolExecution(
+                        tool_name=tool_name,
+                        arguments=arguments,
+                        result=tool_result,
+                    )
+                )
+                continue
 
-        _record_trace(
-            trace_events,
+            _record_trace(
+                trace_events,
+                request_id=request_id,
+                event="ask.invalid_response",
+                step=step,
+                payload={"response_type": str(response_type)},
+            )
+            raise ValueError("LLM response must be final_answer or tool_call")
+    except AskServiceError:
+        raise
+    except Exception as exc:
+        if not any(event.event == "ask.fail" for event in trace_events):
+            _record_trace(
+                trace_events,
+                request_id=request_id,
+                event="ask.fail",
+                step=None,
+                payload={
+                    "reason": "exception",
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                    "tool_execution_count": len(tool_executions),
+                    "last_model": last_model,
+                },
+            )
+        raise AskServiceError(
+            message=str(exc),
             request_id=request_id,
-            event="ask.invalid_response",
-            step=step,
-            payload={"response_type": str(response_type)},
-        )
-        raise ValueError("LLM response must be final_answer or tool_call")
+            model=last_model,
+            tool_executions=tool_executions,
+            trace_events=trace_events,
+        ) from exc
 
     _record_trace(
         trace_events,
@@ -421,4 +458,10 @@ def ask_question(
             "last_model": last_model,
         },
     )
-    raise ValueError("LLM did not finish within max_steps")
+    raise AskServiceError(
+        message="LLM did not finish within max_steps",
+        request_id=request_id,
+        model=last_model,
+        tool_executions=tool_executions,
+        trace_events=trace_events,
+    )
