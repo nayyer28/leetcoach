@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
+from leetcoach.app.application.ask.ask_service import AskServiceError, AskToolExecution, AskTraceEvent
 from leetcoach.cli import cli
 
 
@@ -107,6 +108,54 @@ class CliUnitTest(unittest.TestCase):
         self.assertIn("request_id: req-123", result.output)
         self.assertIn("[step -] ask.start", result.output)
         self.assertIn("You can ask about problems and reviews.", result.output)
+
+    @patch("leetcoach.cli.ask_question")
+    @patch("leetcoach.cli.GeminiProvider")
+    @patch("leetcoach.cli.load_config")
+    def test_admin_ask_verbose_prints_trace_on_failure(
+        self, mock_load_config, mock_provider_cls, mock_ask_question
+    ) -> None:
+        mock_load_config.return_value = SimpleNamespace(
+            db_path="/tmp/leetcoach.db",
+            gemini_api_key="test-key",
+        )
+        mock_provider_cls.return_value = object()
+        mock_ask_question.side_effect = AskServiceError(
+            message="LLM did not finish within max_steps",
+            request_id="req-999",
+            model="gemini-2.5-flash-lite",
+            tool_executions=[
+                AskToolExecution(
+                    tool_name="describe_ask_capabilities",
+                    arguments={"focus": "overview"},
+                    result={"categories": []},
+                )
+            ],
+            trace_events=[
+                AskTraceEvent(
+                    event="ask.start",
+                    step=None,
+                    payload={"question": "what can you do?", "max_steps": 5},
+                ),
+                AskTraceEvent(
+                    event="ask.fail",
+                    step=5,
+                    payload={"reason": "max_steps_exhausted"},
+                ),
+            ],
+        )
+        runner = CliRunner()
+
+        result = runner.invoke(
+            cli,
+            ["admin", "ask", "--user", "u-1", "--verbose", "what", "can", "you", "do?"],
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("request_id: req-999", result.output)
+        self.assertIn("[step -] ask.start", result.output)
+        self.assertIn("[step 5] ask.fail", result.output)
+        self.assertIn("LLM did not finish within max_steps", result.output)
 
     @patch("leetcoach.cli.subprocess.run")
     def test_test_command_runs_target_directly(self, mock_run) -> None:

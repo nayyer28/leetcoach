@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from leetcoach.app.application.ask.ask_service import AskServiceResult
+from leetcoach.app.application.ask.ask_service import AskServiceError, AskServiceResult
 from leetcoach.app.application.quiz.common import QuizQuestionPayload, StartQuizResult
 from leetcoach.app.infrastructure.config.app_config import AppConfig
 from leetcoach.app.interface.bot.handlers import ask_command, quiz_command, unknown_command
@@ -82,6 +82,53 @@ class TelegramBotQuizFlowUnitTest(unittest.IsolatedAsyncioTestCase):
             await ask_command(update, context)
 
         message.reply_text.assert_awaited_once_with("Usage: /ask <question>")
+
+    async def test_ask_command_includes_request_id_on_shared_failure(self) -> None:
+        message = SimpleNamespace(reply_text=AsyncMock())
+        update = SimpleNamespace(
+            message=message,
+            effective_chat=SimpleNamespace(id=123),
+            effective_user=SimpleNamespace(id=456),
+        )
+        context = SimpleNamespace(
+            args=["what", "can", "you", "do?"],
+            user_data={},
+            application=SimpleNamespace(
+                bot_data={
+                    "config": AppConfig(
+                        environment="development",
+                        log_level="INFO",
+                        timezone="UTC",
+                        db_path=".local/leetcoach.db",
+                        telegram_bot_token="token",
+                        gemini_api_key="gemini-key",
+                        allowed_user_ids=frozenset(),
+                    ),
+                    "ask_provider": object(),
+                }
+            ),
+            bot=SimpleNamespace(send_chat_action=AsyncMock()),
+        )
+
+        with (
+            patch("leetcoach.app.interface.bot.handlers._interrupt_quiz_if_needed"),
+            patch(
+                "leetcoach.app.interface.bot.handlers.ask_question",
+                side_effect=AskServiceError(
+                    message="LLM did not finish within max_steps",
+                    request_id="req-ask-1",
+                    model="gemini-2.5-flash-lite",
+                ),
+            ),
+        ):
+            await ask_command(update, context)
+
+        context.bot.send_chat_action.assert_awaited_once()
+        message.reply_text.assert_awaited_once_with(
+            "⚠️ Could not answer that right now: LLM did not finish within max_steps\n"
+            "Request ID: req-ask-1\n"
+            "Try again shortly."
+        )
 
     async def test_quiz_command_shows_typing_before_generation(self) -> None:
         message = SimpleNamespace(reply_text=AsyncMock())

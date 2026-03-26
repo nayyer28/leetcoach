@@ -32,7 +32,7 @@ from leetcoach.app.application.problems.browse_problems import (
     list_recent_problems,
     search_problems,
 )
-from leetcoach.app.application.ask.ask_service import ask_question
+from leetcoach.app.application.ask.ask_service import AskServiceError, ask_question
 from leetcoach.app.application.problems.log_problem import LogProblemInput, log_problem
 from leetcoach.app.application.quiz.answer_quiz import answer_quiz
 from leetcoach.app.application.quiz.common import (
@@ -495,6 +495,17 @@ async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             question=question,
             provider=provider,
         )
+    except AskServiceError as exc:
+        LOGGER.exception(
+            "Ask command failed (request_id=%s, model=%s, trace_events=%s)",
+            exc.request_id,
+            exc.model or "unknown",
+            len(exc.trace_events),
+        )
+        await update.message.reply_text(
+            f"⚠️ Could not answer that right now: {exc}\nRequest ID: {exc.request_id}\nTry again shortly."
+        )
+        return
     except (GeminiAllModelsFailed, ValueError, json.JSONDecodeError) as exc:
         LOGGER.exception("Ask command failed")
         await update.message.reply_text(

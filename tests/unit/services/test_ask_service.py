@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from leetcoach.app.application.ask.ask_service import ask_question
+from leetcoach.app.application.ask.ask_service import AskServiceError, ask_question
 from leetcoach.app.application.problems.log_problem import LogProblemInput, log_problem
 from leetcoach.app.infrastructure.llm.gemini_provider import GeminiProvider
 from leetcoach.app.misc.migrate import migrate_database
@@ -45,7 +45,7 @@ class AskServiceUnitTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "leetcoach-test.db")
             migrate_database(db_path)
-            with self.assertRaisesRegex(ValueError, "max_steps"):
+            with self.assertRaisesRegex(AskServiceError, "max_steps") as exc_ctx:
                 ask_question(
                     db_path=db_path,
                     telegram_user_id="u-1",
@@ -53,6 +53,10 @@ class AskServiceUnitTest(unittest.TestCase):
                     provider=provider,
                     max_steps=2,
                 )
+        exc = exc_ctx.exception
+        self.assertTrue(exc.request_id)
+        self.assertEqual(exc.trace_events[-1].event, "ask.fail")
+        self.assertEqual(exc.trace_events[-1].payload["reason"], "max_steps_exhausted")
 
     def test_ask_question_can_describe_capabilities(self) -> None:
         responses = iter(
