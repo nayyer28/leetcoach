@@ -1,5 +1,11 @@
 # leetcoach v2 Spec: LLM Quiz Flow (MCQ)
 
+Status note:
+- this is a historical/specification document for the quiz track
+- for the current live command surface, use:
+  - [`docs/usage.md`](docs/usage.md)
+  - [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
+
 ## Scope (v2)
 
 This spec covers:

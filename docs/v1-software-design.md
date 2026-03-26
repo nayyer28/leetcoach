@@ -3,6 +3,12 @@
 This document describes the internal software design only.
 For data model and command behavior, see [`docs/v1-spec.md`](docs/v1-spec.md).
 
+Status note:
+- this is a historical design document
+- the current live usage and interface contract are documented in:
+  - [`docs/usage.md`](docs/usage.md)
+  - [`docs/telegram-command-contract.md`](docs/telegram-command-contract.md)
+
 ## Architecture
 
 ```mermaid

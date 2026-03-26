@@ -1,372 +1,267 @@
 # Telegram Command Contract
 
-This document defines Telegram command behavior for the current app interface.
-Outbound reminders are delivered by the scheduler process (`lch scheduler`), not by an inbound Telegram command.
+This document describes the current Telegram interface.
 
-## Command List
+Important boundary:
+- inbound chat commands are handled by the bot
+- outbound reminders are sent by the scheduler process (`lch scheduler`)
+
+## Live Command List
 
 - `/start`
 - `/register`
-- `/help`
 - `/hi`
 - `/log`
+- `/log show [n]`
+- `/ask <question>`
 - `/due`
-- `/reviewed <token>`
-- `/search <query>`
+- `/reviewed P1`
+- `/remind`
+- `/remind last`
+- `/remind new`
+- `/remind count <n>`
+- `/remind time <hour>`
 - `/list`
-- `/pattern <pattern>`
-- `/show <token>`
-- `/quiz [topic]`
+- `/pattern <text>`
+- `/search <text>`
+- `/show P1`
+- `/edit P1`
+- `/quiz`
+- `/quiz <topic>`
 - `/reveal`
 
 ## Access Control
 
 Behavior:
 - bot checks `LEETCOACH_ALLOWED_USER_IDS` against Telegram `user_id`
-- empty allow list: open mode (any user)
-- non-empty allow list: only listed users can execute commands
+- empty allow-list means open mode
+- non-empty allow-list means only listed users may use the bot
 
 Blocked response:
 - `⛔ Access denied for this bot.`
 
-## `/start`
+## Registration And Help
+
+### `/start`
+- registers or refreshes the user/chat mapping
+- returns the command menu
+
+### `/register`
+- explicit alias for registration
+
+### `/hi`
+- shows the current command menu
+- this is the live help command
+
+## `/log`
 
 Purpose:
-- register or update user/chat mapping
+- create or update one logged problem
+- initialize or refresh review-queue state for that problem
 
-Input:
-- no arguments
-
-Behavior:
-- upserts user by Telegram user id
-- stores Telegram chat id and timezone default
-
-Success response:
-- first run: registered confirmation + command menu
-- later runs: welcome-back message + command menu
-
-## `/register`
-
-Purpose:
-- explicit registration alias (same behavior as `/start`)
-
-Input:
-- no arguments
-
-Behavior:
-- calls same register-or-welcome flow as `/start`
-
-## `/help`
-
-Purpose:
-- show command menu without re-registering the user
-
-Input:
-- no arguments
-
-Behavior:
-- returns grouped command help text
-
-## `/hi`
-
-Purpose:
-- alias for `/help`
-
-Input:
-- no arguments
-
-Behavior:
-- returns the same grouped command help text as `/help`
-
-## `/log` (guided flow)
-
-Purpose:
-- create or update one logged problem and add it to the user review queue
-
-Input mode:
-- guided, multi-step prompts in chat
-
-Prompt sequence:
+Flow:
 1. title
-2. difficulty (`easy|medium|hard`) via inline button choices or exact typed value
-3. LeetCode URL or slug (`-` to skip)
-4. NeetCode URL or slug (required)
-5. pattern via inline button choices or exact typed value
-6. solved timestamp (`now` or ISO 8601)
-7. concepts (`-` to skip)
-8. time complexity (`-` to skip)
-9. space complexity (`-` to skip)
-10. notes (`-` to skip)
+2. difficulty
+3. LeetCode URL or slug
+4. NeetCode URL or slug
+5. pattern
+6. solved time
+7. concepts
+8. time complexity
+9. space complexity
+10. notes
 
-Behavior:
-- upserts canonical problem
-- upserts user problem record
-- ensures review queue state exists for the user problem
-- difficulty is case-insensitive but must be an exact known value
-- pattern is normalized to the canonical roadmap label and unknown values are rejected
-- LeetCode / NeetCode full URLs are accepted and normalized to stored slugs
+Current behavior:
+- difficulty and pattern use guided choices
+- URL or slug input is normalized to stored slugs
+- after all fields are collected, the bot shows a review summary
+- from the summary, the user can:
+  - save
+  - edit one field
+  - cancel
 
-Success response:
-- confirms problem logged and shows `user_problem_id`
+Notes:
+- optional text fields can be cleared with `-`
+- solved time accepts:
+  - `now`
+  - ISO 8601
+  - local `YYYY-MM-DD HH:MM`
 
-Accepted solved timestamp inputs:
-- `now`
-- ISO 8601 (for example `2026-03-08T12:00:00+00:00`)
-- local datetime `YYYY-MM-DD HH:MM` (converted to UTC for storage)
+### `/log show [n]`
+- read-only shortcut
+- shows the most recently logged `n` problems
+- default is `1`
+- does not start the guided log flow
 
-Cancel:
-- `/cancel` during flow aborts and clears pending state
+## Stable Problem IDs
 
-Shortcut mode:
-- `/log show`
-- `/log show <n>`
+User-facing problem references are deterministic and per-user.
 
-Behavior:
-- does not start the guided log conversation
-- shows the most recently logged `n` problems for the current user
-- default `n` is `1`
-- invalid `n` returns a usage error
+Examples:
+- `P1`
+- `P2`
+- `P3`
 
-## `/due`
+These IDs are used by:
+- `/show`
+- `/edit`
+- `/reviewed`
+- `/due`
+- `/list`
+- `/search`
+- `/pattern`
+- `/ask`
 
-Purpose:
-- list outstanding review reminders and provide short completion tokens
-
-Input:
-- no arguments
-
-Behavior:
-- finds problems that were reminded but not yet marked reviewed
-- shows one token per problem (`A1`, `A2`, ...)
-- includes first-attempt timestamp (`solved_at`) and reminder context
-
-Success response:
-- compact numbered list with token, title, review count, and outstanding-since time
-- outstanding-since time is rendered in configured local timezone
-- includes LeetCode and NeetCode links built from stored slugs
-
-No data response:
-- `No outstanding reviews.`
-
-## `/remind`
+## `/show P1`
 
 Purpose:
-- show the effective reminder settings for the current user
+- show full stored detail for one problem
 
-Input:
-- no arguments, or one of:
-  - `last`
-  - `new`
-  - `count <n>`
-  - `time <hour>`
+Returns:
+- title
+- difficulty
+- pattern
+- solved time
+- LeetCode URL
+- NeetCode URL
+- concepts
+- time complexity
+- space complexity
+- notes
 
-Behavior:
-- with no arguments, shows:
-  - daily reminder count
-  - reminder hour
-  - whether count/hour come from app defaults or user overrides
-- `/remind count <n>`:
-  - accepts values from `1` to `10`
-  - stores a user-specific daily reminder count
-- `/remind time <hour>`:
-  - accepts values from `0` to `23`
-  - stores a user-specific reminder hour
-- `/remind last`:
-  - shows the most recent reminder batch sent to the user
-- `/remind new`:
-  - selects one additional queue candidate immediately
-  - marks that candidate as reminded
-
-Error responses:
-- invalid or missing subcommand args -> usage hint
-- non-numeric count/hour -> validation error
-- out of range -> validation error
-
-## Outbound Reminder Messages (Scheduler)
-
-Source:
-- periodic scheduler loop (`lch scheduler`) querying the user review queue
-
-Behavior:
-- sends reminders from the front of each user’s queue
-- reminded problems stay in place until the user marks them reviewed
-- once a problem is marked reviewed, it moves to the back of the queue
-- daily max reminder picks use user override when present, otherwise `LEETCOACH_REMINDER_DAILY_MAX` (default `2`)
-- sends only at local hour `LEETCOACH_REMINDER_HOUR_LOCAL` (default `8`)
-- de-duplicates by local user day using the latest reminder-request timestamp
-- sends a header message first so subsequent messages are clearly marked as reminder picks
-- includes first-attempt time, review count, and links
-- includes LeetCode/NeetCode links when available
-- instructs user to run `/due` and then `/reviewed <token>`
-
-## `/reviewed <token>`
+## `/edit P1`
 
 Purpose:
-- mark one reminded problem as reviewed
-
-Input:
-- short token from latest `/due`, `/list`, `/search`, or `/pattern` output
-- example: `/reviewed A1`
+- guided edit flow for one existing problem
 
 Behavior:
-- resolves token to `user_problem_id`
+- opens a field picker
+- user chooses what to edit
+- difficulty and pattern use guided selection
+- text-like fields prompt with current value shown first
+- on success, bot confirms the updated field
+
+User-facing fields:
+- title
+- difficulty
+- LeetCode URL
+- NeetCode URL
+- pattern
+- concepts
+- time complexity
+- space complexity
+- notes
+
+## Browse Commands
+
+### `/list`
+- lists logged problems for the current user
+- grouped and ordered for readability
+
+### `/pattern <text>`
+- filters problems by pattern text
+
+### `/search <text>`
+- searches across problem metadata and notes
+
+Current search behavior includes fields such as:
+- title
+- difficulty
+- LeetCode slug
+- NeetCode slug
+- pattern
+- solved date text
+- time complexity
+- space complexity
+- notes
+- concepts
+
+## Review Commands
+
+### `/due`
+- shows reminded-but-not-yet-reviewed problems
+- uses stable problem IDs like `P1`
+
+### `/reviewed P1`
+- marks the problem reviewed
 - increments review count
-- updates `last_reviewed_at`
+- updates review timestamps
 - moves the problem to the back of the queue
 
-Success response:
-- `Marked reviewed: <token>`
+## Reminder Commands
 
-Error responses:
-- missing token -> usage hint
-- unknown/expired token -> ask to run `/due` again
-- stale token/update failure -> ask to run `/due` again
+### `/remind`
+- shows effective reminder settings for the current user
 
-## `/search <query>`
+### `/remind count <n>`
+- sets a user-specific daily reminder max
 
-Purpose:
-- search problems by title/pattern/notes/concepts
+### `/remind time <hour>`
+- sets a user-specific reminder hour
 
-Input:
-- free text query
+### `/remind last`
+- shows the most recent reminder batch sent to the user
 
-Behavior:
-- case-insensitive search scoped to current user
+### `/remind new`
+- sends one extra review candidate immediately
 
-Success response:
-- compact numbered list with title, difficulty, pattern, solved time
-- solved time is rendered in configured local timezone
-- includes LeetCode and NeetCode links built from stored slugs
+Scheduler notes:
+- reminders are sent by the scheduler worker
+- the scheduler respects local reminder hour
+- the scheduler respects user-specific overrides when present
+- the scheduler no longer sends a separate daily header message before reminder entries
 
-No data response:
-- `No matching problems.`
-
-## `/list`
+## `/ask <question>`
 
 Purpose:
-- list all logged problems for the current user
+- read-only natural-language interface over the user’s own data
 
-Input:
-- no arguments
+Current ask surface includes:
+- problem detail and lookup
+- problem listing and filtering
+- problem search
+- due review reads
+- last reminder batch reads
+- aggregate analytics
+- ask capability/help questions
 
-Behavior:
-- returns up to 100 user problems
-- renders problems oldest-first within each pattern section
+Examples:
+- `/ask what can you do?`
+- `/ask show problem P1`
+- `/ask show my latest 5 problems`
+- `/ask show me all problems I solved in Feb 2026`
+- `/ask what is due right now?`
+- `/ask what did you remind me last?`
+- `/ask how many easy problems have I solved in Trees?`
 
-Success response:
-- compact numbered list with title, difficulty, pattern, solved time
-- solved time is rendered in configured local timezone
-- includes LeetCode and NeetCode links built from stored slugs
+Important constraint:
+- `/ask` is read-only for now
+- write flows such as logging and editing are better done with explicit commands
 
-No data response:
-- `No logged problems yet.`
+## Quiz Commands
 
-## `/pattern <pattern>`
-
-Purpose:
-- list problems under one pattern name
-
-Input:
-- pattern substring
-
-Behavior:
-- case-insensitive partial match on stored pattern, scoped to current user
-
-Success response:
-- compact numbered list with title/difficulty/pattern/solved time
-- solved time is rendered in configured local timezone
-- includes LeetCode and NeetCode links built from stored slugs
-
-No data response:
-- `No problems for this pattern.`
-
-## `/show <token>`
-
-Purpose:
-- show the full stored detail for one logged problem
-
-Input:
-- short token from the latest `/list`, `/search`, or `/pattern` output
-- example: `/show A1`
+### `/quiz`
+### `/quiz <topic>`
 
 Behavior:
-- resolves token to one `user_problem_id`
-- returns full stored problem detail:
-  - title
-  - difficulty
-  - pattern
-  - solved timestamp
-  - LeetCode / NeetCode links
-  - concepts
-  - time complexity
-  - space complexity
-  - notes
+- generates one theory-style MCQ
+- creates or replaces the active quiz session
+- topic is optional
+- session expires after a limited time window
 
-Error responses:
-- missing token -> usage hint
-- unknown/expired token -> ask user to run `/list`, `/search`, or `/pattern` again
+### Free-text answer messages
+- while a quiz is active, the next normal message is treated as answer input
+- answer must contain `A`, `B`, `C`, or `D`
+- bot returns correctness plus explanation
 
-## `/quiz [topic]`
+### `/reveal`
+- reveals the correct answer and explanation for the active quiz
 
-Purpose:
-- generate one MCQ interview-style theory question
-
-Input:
-- optional topic text (for example `dp`, `graphs`, `system design`)
+## Unknown Text / Unknown Commands
 
 Behavior:
-- requires configured `GEMINI_API_KEY`
-- if topic is not recognized, bot asks:
-  - `Not sure I know this topic yet. Do you want a general question instead? (yes/no)`
-  - `yes` starts a general quiz
-  - `no` cancels and asks for another topic
-- on success, creates/replaces active quiz session for the user
-- response shows question text and options `A-D`
-- any other non-quiz command interrupts the active quiz session
-- quiz session expires after 30 minutes of inactivity/age
-
-Error responses:
-- provider not configured -> ask to set `GEMINI_API_KEY`
-- generation failure -> retry hint
-
-## Free-Text Answer Message (after `/quiz`)
-
-Purpose:
-- check answer using normal chat message without extra command
-
-Input:
-- any non-command message while active quiz exists
-
-Behavior:
-- message is treated as answer input
-- answer must include one of `A`, `B`, `C`, or `D`
-- explanation after the option is allowed (example: `B because hash maps are O(1) average`)
-- bot returns:
-  - correctness
-  - selected vs correct option
-  - short explanation
-  - short why-other-options-are-wrong summary
-
-Validation:
-- if no option choice is detected, bot asks the user to answer with `A/B/C/D`
-
-If no active quiz exists:
-- bot returns a compact help / command hint instead of treating the text as an answer
-
-## `/reveal`
-
-Purpose:
-- reveal correct option and full explanation for active quiz
-
-Input:
-- no arguments
-
-Behavior:
-- works before or after answer submission
-- marks session revealed and sets short retention TTL window
-
-If no active quiz exists:
-- `⚠️ No active quiz. Run /quiz first.`
-
-If quiz expired:
-- `⌛ This quiz expired. Run /quiz again.`
+- bot returns a compact command hint
+- the fallback help points users toward:
+  - `/hi`
+  - `/ask <question>`
+  - the main read/write commands
