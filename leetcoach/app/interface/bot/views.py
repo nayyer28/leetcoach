@@ -214,6 +214,20 @@ def _optional_text(value: str | None) -> str:
     return escape(value) if value else "-"
 
 
+def _highlight_html(value: str, query: str) -> str:
+    if not query.strip():
+        return escape(value)
+    pattern = re.compile(re.escape(query.strip()), re.IGNORECASE)
+    parts: list[str] = []
+    last_end = 0
+    for match in pattern.finditer(value):
+        parts.append(escape(value[last_end : match.start()]))
+        parts.append(f"<b>{escape(match.group(0))}</b>")
+        last_end = match.end()
+    parts.append(escape(value[last_end:]))
+    return "".join(parts)
+
+
 def _render_notes_html(value: str) -> str:
     text = value.strip()
     fence_pattern = re.compile(r"```(?:[A-Za-z0-9_+-]+)?\n?(.*?)```", re.DOTALL)
@@ -448,6 +462,7 @@ def render_quiz_reveal(question: QuizQuestionPayload) -> str:
 def render_problem_rows(
     rows: list[dict[str, str]],
     timezone_name: str,
+    search_query: str | None = None,
 ) -> str:
     lines: list[str] = ["📚 <b>Your Problems</b>", ""]
     grouped: dict[tuple[str, int, str], list[dict[str, str]]] = {}
@@ -481,6 +496,12 @@ def render_problem_rows(
                 lines.append(f"   {_bold('LC:')} {_link('Open LeetCode', lc)}")
             if nc:
                 lines.append(f"   {_bold('NC:')} {_link('Open NeetCode', nc)}")
+            if search_query and row.get("matched_field") and row.get("matched_text"):
+                lines.append(
+                    "   "
+                    f"{_bold('Matched on:')} {escape(str(row['matched_field']).title())} "
+                    f"({_highlight_html(str(row['matched_text']), search_query)})"
+                )
             idx += 1
         lines.append("")
     if lines and not lines[-1]:

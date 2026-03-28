@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from leetcoach.app.application.problems.problem_refs import format_problem_ref
 from leetcoach.app.infrastructure.config.db import get_connection
@@ -49,7 +50,41 @@ def _serialize_problem_row(row) -> dict[str, str]:
     }
 
 
-def search_problems(db_path: str, telegram_user_id: str, query: str) -> list[dict[str, str]]:
+def _resolve_timezone(timezone_name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("UTC")
+
+
+def _local_date_display(iso_ts: str, timezone_name: str) -> str:
+    dt = datetime.fromisoformat(iso_ts)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+    return dt.astimezone(_resolve_timezone(timezone_name)).strftime("%d %B %Y")
+
+
+def _match_info(problem: dict[str, str], query: str, timezone_name: str) -> tuple[str, str] | None:
+    needle = query.strip().casefold()
+    checks = [
+        ("title", problem["title"]),
+        ("difficulty", problem["difficulty"].title()),
+        ("pattern", problem["pattern"]),
+        ("solved date", _local_date_display(problem["solved_at"], timezone_name)),
+    ]
+    for label, value in checks:
+        if needle in value.casefold():
+            return label, value
+    return None
+
+
+def search_problems(
+    db_path: str,
+    telegram_user_id: str,
+    query: str,
+    *,
+    timezone_name: str | None = None,
+) -> list[dict[str, str]]:
     with get_connection(db_path) as conn:
         user_id = get_user_id_by_telegram_user_id(
             conn, telegram_user_id=telegram_user_id
@@ -57,7 +92,16 @@ def search_problems(db_path: str, telegram_user_id: str, query: str) -> list[dic
         if user_id is None:
             return []
         rows = search_user_problems(conn, user_id=user_id, query=query)
-    return [_serialize_problem_row(r) for r in rows]
+    problems = [_serialize_problem_row(r) for r in rows]
+    if timezone_name is None:
+        return problems
+    for problem in problems:
+        match = _match_info(problem, query, timezone_name)
+        if match is None:
+            continue
+        problem["matched_field"] = match[0]
+        problem["matched_text"] = match[1]
+    return problems
 
 
 def list_by_pattern(

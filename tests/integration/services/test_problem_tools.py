@@ -82,10 +82,17 @@ class ProblemToolsIntegrationTest(unittest.TestCase):
             search = execute_search_user_problems(
                 db_path=db_path,
                 telegram_user_id="u-1",
-                arguments={"query": "O(n)"},
+                arguments={"query": "Contains"},
             )
             self.assertEqual(len(search["problems"]), 1)
-            self.assertEqual(search["problems"][0]["problem_ref"], "P1")
+            self.assertEqual(search["problems"][0]["problem_ref"], "P2")
+
+            no_complexity_match = execute_search_user_problems(
+                db_path=db_path,
+                telegram_user_id="u-1",
+                arguments={"query": "O(n)"},
+            )
+            self.assertEqual(no_complexity_match["problems"], [])
 
             february = execute_query_user_problems(
                 db_path=db_path,

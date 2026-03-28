@@ -1169,11 +1169,13 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("Usage: /search <query>")
         return
     query = " ".join(context.args)
-    rows = search_problems(cfg.db_path, telegram_user_id, query)
+    rows = search_problems(
+        cfg.db_path, telegram_user_id, query, timezone_name=cfg.timezone
+    )
     if not rows:
         await update.message.reply_text("🔎 No matching problems.")
         return
-    await _reply_long_text(update, _render_problem_rows(rows, cfg.timezone))
+    await _reply_long_text(update, _render_problem_rows(rows, cfg.timezone, search_query=query))
 
 
 async def pattern_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
