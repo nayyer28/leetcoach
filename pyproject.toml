@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.1,<9.0",
+    "dateparser>=1.2,<2.0",
     "python-telegram-bot>=21.0,<22.0",
 ]
 

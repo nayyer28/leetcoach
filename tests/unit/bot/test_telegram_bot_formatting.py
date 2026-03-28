@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import unittest
 
+from datetime import datetime
+from unittest.mock import patch
+from zoneinfo import ZoneInfo
+
 from telegram import InlineKeyboardMarkup
 
 from leetcoach.app.infrastructure.config.app_config import AppConfig
@@ -54,6 +58,42 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
     def test_normalize_solved_at_rejects_invalid(self) -> None:
         value = _normalize_solved_at("not-a-date", "Europe/Berlin")
         self.assertIsNone(value)
+
+    def test_normalize_solved_at_accepts_yesterday(self) -> None:
+        frozen_now = datetime(2026, 3, 28, 16, 45, tzinfo=ZoneInfo("Europe/Berlin"))
+        with patch("leetcoach.app.interface.bot.views.datetime") as mock_datetime:
+            mock_datetime.now.return_value = frozen_now
+            mock_datetime.fromisoformat.side_effect = datetime.fromisoformat
+            mock_datetime.strptime.side_effect = datetime.strptime
+            value = _normalize_solved_at("yesterday", "Europe/Berlin")
+        self.assertEqual(value, "2026-03-27T15:45:00+00:00")
+
+    def test_normalize_solved_at_accepts_today_at_hour(self) -> None:
+        frozen_now = datetime(2026, 3, 28, 16, 45, tzinfo=ZoneInfo("Europe/Berlin"))
+        with patch("leetcoach.app.interface.bot.views.datetime") as mock_datetime:
+            mock_datetime.now.return_value = frozen_now
+            mock_datetime.fromisoformat.side_effect = datetime.fromisoformat
+            mock_datetime.strptime.side_effect = datetime.strptime
+            value = _normalize_solved_at("today at 12", "Europe/Berlin")
+        self.assertEqual(value, "2026-03-28T11:00:00+00:00")
+
+    def test_normalize_solved_at_accepts_day_before_yesterday(self) -> None:
+        frozen_now = datetime(2026, 3, 28, 16, 45, tzinfo=ZoneInfo("Europe/Berlin"))
+        with patch("leetcoach.app.interface.bot.views.datetime") as mock_datetime:
+            mock_datetime.now.return_value = frozen_now
+            mock_datetime.fromisoformat.side_effect = datetime.fromisoformat
+            mock_datetime.strptime.side_effect = datetime.strptime
+            value = _normalize_solved_at("day before yesterday", "Europe/Berlin")
+        self.assertEqual(value, "2026-03-26T15:45:00+00:00")
+
+    def test_normalize_solved_at_accepts_yesterday_with_time(self) -> None:
+        frozen_now = datetime(2026, 3, 28, 16, 45, tzinfo=ZoneInfo("Europe/Berlin"))
+        with patch("leetcoach.app.interface.bot.views.datetime") as mock_datetime:
+            mock_datetime.now.return_value = frozen_now
+            mock_datetime.fromisoformat.side_effect = datetime.fromisoformat
+            mock_datetime.strptime.side_effect = datetime.strptime
+            value = _normalize_solved_at("yesterday 14:30", "Europe/Berlin")
+        self.assertEqual(value, "2026-03-27T13:30:00+00:00")
 
     def test_problem_url_builders_from_slug(self) -> None:
         self.assertEqual(
