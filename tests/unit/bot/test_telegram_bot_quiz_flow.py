@@ -60,10 +60,11 @@ class TelegramBotQuizFlowUnitTest(unittest.IsolatedAsyncioTestCase):
         ask_mock.assert_called_once()
         message.reply_text.assert_awaited_once_with(
             "You have solved 3 easy problems.\n\n"
-            "Confidence: high\n\n"
-            "Tool fit: exact\n\n"
-            "Answer basis: direct_tool_result\n\n"
-            "Comments: I used the aggregate tool result directly."
+            "<b>Confidence:</b> high\n\n"
+            "<b>Tool fit:</b> exact\n\n"
+            "<b>Answer basis:</b> direct_tool_result\n\n"
+            "<b>Comments:</b> I used the aggregate tool result directly.",
+            parse_mode="HTML",
         )
 
     async def test_ask_command_requires_question(self) -> None:
@@ -184,7 +185,8 @@ class TelegramBotQuizFlowUnitTest(unittest.IsolatedAsyncioTestCase):
 
         message.reply_text.assert_awaited_once_with(
             "I cannot answer this confidently right now.\n\n"
-            "Comments: The current tools do not support month-level grouping."
+            "<b>Comments:</b> The current tools do not support month-level grouping.",
+            parse_mode="HTML",
         )
 
     async def test_quiz_command_shows_typing_before_generation(self) -> None:

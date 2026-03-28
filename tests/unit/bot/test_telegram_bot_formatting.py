@@ -188,8 +188,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         text = _render_problem_rows(rows, "Europe/Berlin")
         self.assertIn("Your Problems", text)
         self.assertNotIn("<pre>", text)
-        self.assertIn("[P1]", text)
-        self.assertIn("Use /show P1", text)
+        self.assertIn("<code>P1</code>", text)
+        self.assertIn("<code>/show P1</code>", text)
         self.assertIn("Validate Binary Search Tree", text)
         self.assertIn("Medium", text)
         self.assertIn("Trees", text)
@@ -240,8 +240,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
             },
         ]
         text = _render_problem_rows(rows, "Europe/Berlin")
-        self.assertLess(text.find("🧩 Arrays & Hashing"), text.find("🧩 Trees"))
-        self.assertLess(text.find("🧩 Trees"), text.find("🧩 Graphs"))
+        self.assertLess(text.find("🧩 <b>Arrays & Hashing</b>"), text.find("🧩 <b>Trees</b>"))
+        self.assertLess(text.find("🧩 <b>Trees</b>"), text.find("🧩 <b>Graphs</b>"))
 
     def test_render_problem_rows_orders_oldest_first_within_pattern(self) -> None:
         rows = [
@@ -290,7 +290,7 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         text = _render_due(items, "Europe/Berlin")
         self.assertIn("Due Reviews", text)
         self.assertNotIn("<pre>", text)
-        self.assertIn("[P1]", text)
+        self.assertIn("<code>P1</code>", text)
         self.assertIn("First attempt", text)
         self.assertIn("Reviews completed", text)
         self.assertIn("15 Mar 14:28 CET", text)
@@ -346,8 +346,14 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
             ),
         ]
         text = _render_due(items, "UTC")
-        self.assertLess(text.find("[P3] Pending Later"), text.find("[P2] Overdue Newer"))
-        self.assertLess(text.find("[P2] Overdue Newer"), text.find("[P1] Overdue Older"))
+        self.assertLess(
+            text.find("<code>P3</code> Pending Later"),
+            text.find("<code>P2</code> Overdue Newer"),
+        )
+        self.assertLess(
+            text.find("<code>P2</code> Overdue Newer"),
+            text.find("<code>P1</code> Overdue Older"),
+        )
 
     def test_quiz_topic_recognition(self) -> None:
         self.assertTrue(is_known_quiz_topic("dp"))
@@ -407,15 +413,38 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         }
         text = _render_problem_detail(row, "Europe/Berlin")
         self.assertIn("Validate Binary Search Tree", text)
-        self.assertIn("ID: P1", text)
-        self.assertIn("Concepts:", text)
+        self.assertIn("<b>ID:</b> <code>P1</code>", text)
+        self.assertIn("<b>Concepts:</b>", text)
         self.assertIn("Track lower and upper bounds recursively.", text)
-        self.assertIn("Time complexity:", text)
+        self.assertIn("<b>Time complexity:</b>", text)
         self.assertIn("O(n)", text)
-        self.assertIn("Space complexity:", text)
+        self.assertIn("<b>Space complexity:</b>", text)
         self.assertIn("O(h)", text)
-        self.assertIn("Notes:", text)
+        self.assertIn("<b>Notes:</b>", text)
         self.assertIn("Careful with duplicates.", text)
+
+    def test_render_problem_detail_wraps_fenced_code_blocks_in_notes(self) -> None:
+        row = {
+            "user_problem_id": "10",
+            "display_id": 1,
+            "problem_ref": "P1",
+            "title": "Min Stack",
+            "difficulty": "medium",
+            "pattern": "Stack",
+            "solved_at": "2026-03-08T13:28:44+00:00",
+            "leetcode_slug": "min-stack",
+            "neetcode_slug": "min-stack",
+            "concepts": "",
+            "time_complexity": "",
+            "space_complexity": "",
+            "notes": "Heap based solution:\n```python\nimport heapq\nprint('x')\n```",
+            "created_at": "2026-03-08T13:28:44+00:00",
+            "updated_at": "2026-03-08T13:28:44+00:00",
+        }
+        text = _render_problem_detail(row, "Europe/Berlin")
+        self.assertIn("Heap based solution:", text)
+        self.assertIn("<pre><code>import heapq", text)
+        self.assertIn("print(&#x27;x&#x27;)", text)
 
     def test_unknown_text_help_lists_primary_commands(self) -> None:
         text = _unknown_text_help_text()

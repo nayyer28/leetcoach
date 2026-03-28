@@ -73,8 +73,8 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
 
             update.message.reply_text.assert_awaited_once()
             text = update.message.reply_text.await_args.args[0]
-            self.assertIn("Daily reminder count: 3", text)
-            self.assertIn("Reminder hour: 11:00", text)
+            self.assertIn("<b>Daily reminder count:</b> 3", text)
+            self.assertIn("<b>Reminder hour:</b> 11:00", text)
 
     async def test_remind_count_updates_setting(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -183,7 +183,7 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
 
             text = update.message.reply_text.await_args.args[0]
             self.assertIn("Last Reminder Batch", text)
-            self.assertIn("[P1]", text)
+            self.assertIn("<code>P1</code>", text)
             self.assertIn("Two Sum", text)
             self.assertIn("LC:", text)
             self.assertIn("NC:", text)

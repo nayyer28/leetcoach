@@ -125,16 +125,21 @@ LOGGER = logging.getLogger("leetcoach.telegram")
 
 
 def _render_ask_result_text(result: AskServiceResult) -> str:
+    from html import escape
+
     parts: list[str] = []
     if result.response_type == "final_answer" and result.answer:
-        parts.append(result.answer)
-        parts.append(f"Confidence: {result.confidence}")
-        parts.append(f"Tool fit: {result.tool_fit}")
-        parts.append(f"Answer basis: {result.answer_basis}")
-        parts.append(f"Comments: {result.comments}")
+        parts.append(escape(result.answer))
+        parts.append(f"<b>Confidence:</b> {escape(str(result.confidence))}")
+        parts.append(f"<b>Tool fit:</b> {escape(str(result.tool_fit))}")
+        parts.append(f"<b>Answer basis:</b> {escape(str(result.answer_basis))}")
+        parts.append(f"<b>Comments:</b> {escape(str(result.comments))}")
         return "\n\n".join(parts)
     if result.response_type == "cannot_answer_confidently":
-        return f"I cannot answer this confidently right now.\n\nComments: {result.comments}"
+        return (
+            "I cannot answer this confidently right now.\n\n"
+            f"<b>Comments:</b> {escape(str(result.comments))}"
+        )
     return result.answer or ""
 BOT_BOOTSTRAP_RETRIES = 5
 
@@ -275,6 +280,7 @@ async def _show_log_review(target: Any, cfg: AppConfig, payload_data: dict[str, 
     await target.reply_text(
         _render_log_review(payload_data, cfg.timezone),
         reply_markup=_log_review_action_markup(),
+        parse_mode=ParseMode.HTML,
     )
     return LOG_REVIEW
 
@@ -320,6 +326,7 @@ async def _prompt_log_edit_field(
             _log_field_current_value(payload_data, field),
         ),
         reply_markup=ReplyKeyboardRemove(),
+        parse_mode=ParseMode.HTML,
     )
     return LOG_EDIT_TEXT
 
@@ -353,6 +360,7 @@ async def _prompt_problem_edit_field(
             _log_field_current_value(detail, field),
         ),
         reply_markup=ReplyKeyboardRemove(),
+        parse_mode=ParseMode.HTML,
     )
     return EDIT_TEXT
 
@@ -531,7 +539,10 @@ async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
 
-    await update.message.reply_text(_render_ask_result_text(result))
+    await update.message.reply_text(
+        _render_ask_result_text(result),
+        parse_mode=ParseMode.HTML,
+    )
 
 
 async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1145,7 +1156,7 @@ async def reveal_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def _reply_long_text(update: Update, text: str) -> None:
     for chunk in _chunk_text(text):
-        await update.message.reply_text(chunk)
+        await update.message.reply_text(chunk, parse_mode=ParseMode.HTML)
 
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
