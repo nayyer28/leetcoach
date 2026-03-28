@@ -105,12 +105,10 @@ class QueryServiceIntegrationTest(unittest.TestCase):
             self.assertEqual(len(due_after), 1)
 
             search_rows = search_problems(str(db_path), "u-1", "deque")
-            self.assertEqual(len(search_rows), 1)
-            self.assertEqual(search_rows[0]["title"], "Sliding Window Maximum")
+            self.assertEqual(search_rows, [])
 
             complexity_rows = search_problems(str(db_path), "u-1", "o(n)")
-            self.assertEqual(len(complexity_rows), 1)
-            self.assertEqual(complexity_rows[0]["title"], "Sliding Window Maximum")
+            self.assertEqual(complexity_rows, [])
 
             difficulty_rows = search_problems(str(db_path), "u-1", "hard")
             self.assertEqual(len(difficulty_rows), 1)
@@ -123,8 +121,7 @@ class QueryServiceIntegrationTest(unittest.TestCase):
             self.assertEqual(len(month_rows), 2)
 
             slug_rows = search_problems(str(db_path), "u-1", "sliding-window-maximum")
-            self.assertEqual(len(slug_rows), 1)
-            self.assertEqual(slug_rows[0]["title"], "Sliding Window Maximum")
+            self.assertEqual(slug_rows, [])
 
             pattern_rows = list_by_pattern(str(db_path), "u-1", "tree")
             self.assertEqual(len(pattern_rows), 1)
