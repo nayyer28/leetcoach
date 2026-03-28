@@ -1,6 +1,38 @@
 from __future__ import annotations
 
+from datetime import datetime
 import sqlite3
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def _resolve_timezone(timezone_name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("UTC")
+
+
+def _local_date(iso_ts: str, timezone_name: str) -> str:
+    dt = datetime.fromisoformat(iso_ts)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+    return dt.astimezone(_resolve_timezone(timezone_name)).date().isoformat()
+
+
+def _local_date_search_text(iso_ts: str, timezone_name: str) -> str:
+    dt = datetime.fromisoformat(iso_ts)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+    local_dt = dt.astimezone(_resolve_timezone(timezone_name))
+    return " ".join(
+        (
+            local_dt.date().isoformat(),
+            local_dt.strftime("%d %b %Y").lower(),
+            local_dt.strftime("%d %B %Y").lower(),
+            local_dt.strftime("%b %d %Y").lower(),
+            local_dt.strftime("%B %d %Y").lower(),
+        )
+    )
 
 
 def next_display_id(conn: sqlite3.Connection, *, user_id: int) -> int:
@@ -91,6 +123,8 @@ def search_user_problems(
     conn: sqlite3.Connection, *, user_id: int, query: str
 ) -> list[sqlite3.Row]:
     like = f"%{query.lower()}%"
+    conn.create_function("local_date", 2, _local_date)
+    conn.create_function("local_date_search_text", 2, _local_date_search_text)
     return conn.execute(
         """
         SELECT
@@ -104,40 +138,18 @@ def search_user_problems(
             up.solved_at
         FROM user_problems up
         JOIN problems p ON p.id = up.problem_id
+        JOIN users u ON u.id = up.user_id
         WHERE up.user_id = ?
           AND (
             lower(p.title) LIKE ?
             OR lower(COALESCE(p.difficulty, '')) LIKE ?
-            OR lower(COALESCE(p.leetcode_slug, '')) LIKE ?
-            OR lower(COALESCE(p.neetcode_slug, '')) LIKE ?
             OR lower(up.pattern) LIKE ?
-            OR lower(COALESCE(up.solved_at, '')) LIKE ?
-            OR lower(COALESCE(
-                CASE strftime('%m', up.solved_at)
-                    WHEN '01' THEN 'january'
-                    WHEN '02' THEN 'february'
-                    WHEN '03' THEN 'march'
-                    WHEN '04' THEN 'april'
-                    WHEN '05' THEN 'may'
-                    WHEN '06' THEN 'june'
-                    WHEN '07' THEN 'july'
-                    WHEN '08' THEN 'august'
-                    WHEN '09' THEN 'september'
-                    WHEN '10' THEN 'october'
-                    WHEN '11' THEN 'november'
-                    WHEN '12' THEN 'december'
-                END,
-                ''
-            )) LIKE ?
-            OR lower(COALESCE(up.time_complexity, '')) LIKE ?
-            OR lower(COALESCE(up.space_complexity, '')) LIKE ?
-            OR lower(COALESCE(up.notes, '')) LIKE ?
-            OR lower(COALESCE(up.concepts, '')) LIKE ?
+            OR lower(local_date_search_text(up.solved_at, u.timezone)) LIKE ?
           )
         ORDER BY up.solved_at DESC
         LIMIT 20
         """,
-        (user_id, like, like, like, like, like, like, like, like, like, like, like),
+        (user_id, like, like, like, like),
     ).fetchall()
 
 

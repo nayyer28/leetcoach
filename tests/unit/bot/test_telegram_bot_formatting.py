@@ -311,6 +311,29 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         text = _render_problem_rows(rows, "Europe/Berlin")
         self.assertLess(text.find("Earlier Problem"), text.find("Later Problem"))
 
+    def test_render_problem_rows_shows_search_match_details(self) -> None:
+        rows = [
+            {
+                "user_problem_id": 10,
+                "display_id": 1,
+                "problem_ref": "P1",
+                "title": "Subsets II",
+                "difficulty": "medium",
+                "pattern": "Backtracking",
+                "solved_at": "2026-03-28T20:08:00+00:00",
+                "leetcode_slug": "subsets-ii",
+                "neetcode_slug": "subsets-ii",
+                "matched_field": "solved date",
+                "matched_text": "28 March 2026",
+            }
+        ]
+
+        text = _render_problem_rows(rows, "Europe/Berlin", search_query="28")
+
+        self.assertIn("Matched on:", text)
+        self.assertIn("Solved Date", text)
+        self.assertIn("(<b>28</b> March 2026)", text)
+
     def test_render_due_includes_header_token_and_human_time(self) -> None:
         items = [
             DueReviewItem(
