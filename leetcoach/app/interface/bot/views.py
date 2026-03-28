@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from html import escape
 import re
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -158,30 +159,67 @@ def _display_optional_value(value: str | None) -> str:
     return value if value else "-"
 
 
+def _bold(label: str) -> str:
+    return f"<b>{escape(label)}</b>"
+
+
+def _code(value: str) -> str:
+    return f"<code>{escape(value)}</code>"
+
+
+def _link(label: str, url: str) -> str:
+    return f'<a href="{escape(url, quote=True)}">{escape(label)}</a>'
+
+
+def _optional_text(value: str | None) -> str:
+    return escape(value) if value else "-"
+
+
+def _render_notes_html(value: str) -> str:
+    text = value.strip()
+    fence_pattern = re.compile(r"```(?:[A-Za-z0-9_+-]+)?\n?(.*?)```", re.DOTALL)
+    if "```" not in text:
+        return escape(text)
+
+    parts: list[str] = []
+    last_end = 0
+    for match in fence_pattern.finditer(text):
+        prefix = text[last_end : match.start()]
+        if prefix.strip():
+            parts.append(escape(prefix.strip()))
+        code_body = match.group(1).strip("\n")
+        parts.append(f"<pre><code>{escape(code_body)}</code></pre>")
+        last_end = match.end()
+    suffix = text[last_end:]
+    if suffix.strip():
+        parts.append(escape(suffix.strip()))
+    return "\n\n".join(parts) if parts else escape(text)
+
+
 def render_log_review(payload: dict[str, str | None], timezone_name: str) -> str:
     lines = [
-        "🧾 Review Problem Log",
+        "🧾 <b>Review Problem Log</b>",
         "",
-        f"Title: {_display_optional_value(payload.get('title'))}",
-        f"Difficulty: {_display_optional_value((payload.get('difficulty') or '').title() or None)}",
-        f"LeetCode URL: {_display_optional_value(leetcode_url(payload.get('leetcode_slug')))}",
-        f"NeetCode URL: {_display_optional_value(neetcode_url(payload.get('neetcode_slug')))}",
-        f"Pattern: {_display_optional_value(payload.get('pattern'))}",
-        f"Solved: {_display_optional_value(format_timestamp(payload['solved_at'], timezone_name) if payload.get('solved_at') else None)}",
-        f"Concepts: {_display_optional_value(payload.get('concepts'))}",
-        f"Time Complexity: {_display_optional_value(payload.get('time_complexity'))}",
-        f"Space Complexity: {_display_optional_value(payload.get('space_complexity'))}",
-        f"Notes: {_display_optional_value(payload.get('notes'))}",
+        f"{_bold('Title:')} {_optional_text(payload.get('title'))}",
+        f"{_bold('Difficulty:')} {_optional_text((payload.get('difficulty') or '').title() or None)}",
+        f"{_bold('LeetCode URL:')} {_optional_text(leetcode_url(payload.get('leetcode_slug')))}",
+        f"{_bold('NeetCode URL:')} {_optional_text(neetcode_url(payload.get('neetcode_slug')))}",
+        f"{_bold('Pattern:')} {_optional_text(payload.get('pattern'))}",
+        f"{_bold('Solved:')} {_optional_text(format_timestamp(payload['solved_at'], timezone_name) if payload.get('solved_at') else None)}",
+        f"{_bold('Concepts:')} {_optional_text(payload.get('concepts'))}",
+        f"{_bold('Time Complexity:')} {_optional_text(payload.get('time_complexity'))}",
+        f"{_bold('Space Complexity:')} {_optional_text(payload.get('space_complexity'))}",
+        f"{_bold('Notes:')} {_optional_text(payload.get('notes'))}",
         "",
-        "Save this log, edit a field, or cancel.",
+        "<i>Save this log, edit a field, or cancel.</i>",
     ]
     return "\n".join(lines)
 
 
 def render_log_edit_prompt(field_label: str, current_value: str | None) -> str:
     return (
-        f"✏️ Editing {field_label}\n"
-        f"Current value:\n{_display_optional_value(current_value)}\n\n"
+        f"✏️ <b>Editing {escape(field_label)}</b>\n"
+        f"{_bold('Current value:')}\n{_optional_text(current_value)}\n\n"
         "Send the new value now.\n"
         "Use '-' to clear optional text fields."
     )
@@ -189,8 +227,8 @@ def render_log_edit_prompt(field_label: str, current_value: str | None) -> str:
 
 def render_edit_prompt(problem_ref: str, field_label: str, current_value: str | None) -> str:
     return (
-        f"✏️ Editing {problem_ref} · {field_label}\n"
-        f"Current value:\n{_display_optional_value(current_value)}\n\n"
+        f"✏️ <b>Editing {escape(problem_ref)} · {escape(field_label)}</b>\n"
+        f"{_bold('Current value:')}\n{_optional_text(current_value)}\n\n"
         "Send the new value now.\n"
         "Use '-' to clear optional text fields."
     )
@@ -222,33 +260,33 @@ def extract_problem_slug(raw_value: str, *, provider: str) -> str | None:
 
 
 def render_due(items: list[DueReviewItem], timezone_name: str) -> str:
-    lines: list[str] = ["⏰ Due Reviews", ""]
+    lines: list[str] = ["⏰ <b>Due Reviews</b>", ""]
     for idx, item in enumerate(items, start=1):
-        lines.append(f"{idx}. [{item.problem_ref}] {item.title}")
+        lines.append(f"{idx}. {_code(item.problem_ref)} {escape(item.title)}")
         lines.append(
-            f"   First attempt • {format_timestamp_compact(item.solved_at, timezone_name)}"
+            f"   {_bold('First attempt:')} {escape(format_timestamp_compact(item.solved_at, timezone_name))}"
         )
-        lines.append(f"   Reviews completed • {item.review_count}")
+        lines.append(f"   {_bold('Reviews completed:')} {item.review_count}")
         lines.append(
-            "   Outstanding since • "
-            + format_timestamp_compact(item.requested_at, timezone_name)
+            f"   {_bold('Outstanding since:')} "
+            + escape(format_timestamp_compact(item.requested_at, timezone_name))
         )
         if item.last_reviewed_at:
             lines.append(
-                "   Last reviewed • "
-                + format_timestamp_compact(item.last_reviewed_at, timezone_name)
+                f"   {_bold('Last reviewed:')} "
+                + escape(format_timestamp_compact(item.last_reviewed_at, timezone_name))
             )
         lc = leetcode_url(item.leetcode_slug)
         if lc:
-            lines.append(f"   🔗 LC: {lc}")
+            lines.append(f"   {_bold('LC:')} {_link('Open LeetCode', lc)}")
         nc = neetcode_url(item.neetcode_slug)
         if nc:
-            lines.append(f"   🔗 NC: {nc}")
+            lines.append(f"   {_bold('NC:')} {_link('Open NeetCode', nc)}")
         lines.append("")
     if lines and not lines[-1]:
         lines.pop()
     lines.append("")
-    lines.append("Use /reviewed P1")
+    lines.append(f"Use {_code('/reviewed P1')}")
     return "\n".join(lines)
 
 
@@ -261,21 +299,21 @@ def render_remind_settings(
 ) -> str:
     return "\n".join(
         [
-            "⏰ Reminder Settings",
-            f"Daily reminder count: {effective_count}",
-            f"Reminder hour: {effective_hour:02d}:00",
+            "⏰ <b>Reminder Settings</b>",
+            f"{_bold('Daily reminder count:')} {effective_count}",
+            f"{_bold('Reminder hour:')} {effective_hour:02d}:00",
             (
-                "Count source: app default"
+                f"{_bold('Count source:')} app default"
                 if custom_count is None
-                else "Count source: your custom setting"
+                else f"{_bold('Count source:')} your custom setting"
             ),
             (
-                "Hour source: app default"
+                f"{_bold('Hour source:')} app default"
                 if custom_hour is None
-                else "Hour source: your custom setting"
+                else f"{_bold('Hour source:')} your custom setting"
             ),
             "",
-            "Commands: /remind last, /remind new, /remind count <n>, /remind time <hour>",
+            f"{_bold('Commands:')} /remind last, /remind new, /remind count &lt;n&gt;, /remind time &lt;hour&gt;",
         ]
     )
 
@@ -283,20 +321,20 @@ def render_remind_settings(
 def render_last_batch(batch: list[object], timezone_name: str, row_to_candidate) -> str:
     sent_at = str(batch[0]["last_review_requested_at"])
     lines = [
-        "🕘 Last Reminder Batch",
-        f"Sent at: {format_timestamp(sent_at, timezone_name)}",
+        "🕘 <b>Last Reminder Batch</b>",
+        f"{_bold('Sent at:')} {escape(format_timestamp(sent_at, timezone_name))}",
         "",
     ]
     for index, row in enumerate(batch, start=1):
         candidate = row_to_candidate(row)
-        lines.append(f"{index}. [{candidate.problem_ref}] {candidate.title}")
-        lines.append(f"   Reviews completed: {candidate.review_count}")
+        lines.append(f"{index}. {_code(candidate.problem_ref)} {escape(candidate.title)}")
+        lines.append(f"   {_bold('Reviews completed:')} {candidate.review_count}")
         lc = leetcode_url(candidate.leetcode_slug)
         if lc:
-            lines.append(f"   🔗 LC: {lc}")
+            lines.append(f"   {_bold('LC:')} {_link('Open LeetCode', lc)}")
         nc = neetcode_url(candidate.neetcode_slug)
         if nc:
-            lines.append(f"   🔗 NC: {nc}")
+            lines.append(f"   {_bold('NC:')} {_link('Open NeetCode', nc)}")
     return "\n".join(lines)
 
 
@@ -372,7 +410,7 @@ def render_problem_rows(
     rows: list[dict[str, str]],
     timezone_name: str,
 ) -> str:
-    lines: list[str] = ["📚 Your Problems", ""]
+    lines: list[str] = ["📚 <b>Your Problems</b>", ""]
     grouped: dict[tuple[str, int, str], list[dict[str, str]]] = {}
     for row in rows:
         level, pattern_label, pattern_key = roadmap_pattern_info(row["pattern"])
@@ -384,7 +422,7 @@ def render_problem_rows(
     )
     idx = 1
     for (_, _, pattern_label), group_rows in ordered_groups:
-        lines.append(f"🧩 {pattern_label}")
+        lines.append(f"🧩 <b>{escape(pattern_label)}</b>")
         sorted_rows = sorted(
             group_rows,
             key=lambda row: (row["solved_at"], row["title"].lower()),
@@ -392,18 +430,18 @@ def render_problem_rows(
         for row in sorted_rows:
             lc = leetcode_url(row["leetcode_slug"] or None)
             nc = neetcode_url(row["neetcode_slug"] or None)
-            lines.append(f"{idx}. [{row['problem_ref']}] {row['title']}")
+            lines.append(f"{idx}. {_code(row['problem_ref'])} {escape(row['title'])}")
             lines.append(
                 (
-                    f"   {row['difficulty'].title()} • {row['pattern']} • "
-                    f"{format_timestamp_compact(row['solved_at'], timezone_name)}"
+                    f"   <i>{escape(row['difficulty'].title())} • {escape(row['pattern'])} • "
+                    f"{escape(format_timestamp_compact(row['solved_at'], timezone_name))}</i>"
                 )
             )
-            lines.append(f"   Use /show {row['problem_ref']}")
+            lines.append(f"   Use {_code('/show ' + row['problem_ref'])}")
             if lc:
-                lines.append(f"   🔗 LC: {lc}")
+                lines.append(f"   {_bold('LC:')} {_link('Open LeetCode', lc)}")
             if nc:
-                lines.append(f"   🔗 NC: {nc}")
+                lines.append(f"   {_bold('NC:')} {_link('Open NeetCode', nc)}")
             idx += 1
         lines.append("")
     if lines and not lines[-1]:
@@ -415,29 +453,29 @@ def render_problem_detail(row: dict[str, str], timezone_name: str) -> str:
     lc = leetcode_url(row["leetcode_slug"] or None)
     nc = neetcode_url(row["neetcode_slug"] or None)
     lines = [
-        f"📘 {row['title']}",
-        f"ID: {row['problem_ref']}",
-        f"Difficulty: {row['difficulty'].title()}",
-        f"Pattern: {row['pattern']}",
-        f"Solved: {format_timestamp(row['solved_at'], timezone_name)}",
+        f"📘 <b>{escape(row['title'])}</b>",
+        f"{_bold('ID:')} {_code(row['problem_ref'])}",
+        f"{_bold('Difficulty:')} {escape(row['difficulty'].title())}",
+        f"{_bold('Pattern:')} {escape(row['pattern'])}",
+        f"{_bold('Solved:')} {escape(format_timestamp(row['solved_at'], timezone_name))}",
     ]
     if lc:
-        lines.append(f"LeetCode: {lc}")
+        lines.append(f"{_bold('LeetCode:')} {_link('Open LeetCode', lc)}")
     if nc:
-        lines.append(f"NeetCode: {nc}")
+        lines.append(f"{_bold('NeetCode:')} {_link('Open NeetCode', nc)}")
     lines.append("")
-    lines.append("Concepts:")
-    lines.append(row["concepts"] or "-")
+    lines.append(_bold("Concepts:"))
+    lines.append(_optional_text(row["concepts"]))
     lines.append("")
-    lines.append("Time complexity:")
-    lines.append(row["time_complexity"] or "-")
+    lines.append(_bold("Time complexity:"))
+    lines.append(_optional_text(row["time_complexity"]))
     lines.append("")
-    lines.append("Space complexity:")
-    lines.append(row["space_complexity"] or "-")
+    lines.append(_bold("Space complexity:"))
+    lines.append(_optional_text(row["space_complexity"]))
     if row["notes"]:
         lines.append("")
-        lines.append("Notes:")
-        lines.append(row["notes"])
+        lines.append(_bold("Notes:"))
+        lines.append(_render_notes_html(row["notes"]))
     return "\n".join(lines)
 
 
