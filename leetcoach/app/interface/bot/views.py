@@ -5,6 +5,8 @@ import re
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import dateparser
+
 from leetcoach.app.application.shared.patterns import roadmap_pattern_info
 from leetcoach.app.application.quiz.common import AnswerQuizResult, QuizQuestionPayload
 from leetcoach.app.application.reviews.due_reviews import DueReviewItem
@@ -62,19 +64,56 @@ def normalize_solved_at(raw_value: str, timezone_name: str) -> str | None:
     if value.lower() == "now":
         return datetime.now(UTC).isoformat()
 
+    parsed: datetime | None = None
     try:
         parsed = datetime.fromisoformat(value)
     except ValueError:
         try:
             parsed = datetime.strptime(value, "%Y-%m-%d %H:%M")
         except ValueError:
-            return None
-        parsed = parsed.replace(tzinfo=resolve_timezone(timezone_name))
+            parsed = _parse_human_datetime(value, timezone_name)
+            if parsed is None:
+                return None
+        else:
+            parsed = parsed.replace(tzinfo=resolve_timezone(timezone_name))
     else:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=resolve_timezone(timezone_name))
 
     return parsed.astimezone(UTC).isoformat()
+
+
+def _parse_human_datetime(value: str, timezone_name: str) -> datetime | None:
+    timezone = resolve_timezone(timezone_name)
+    relative_base = datetime.now(timezone)
+    normalized_value = re.sub(
+        r"\b(today|yesterday|day before yesterday)\s+at\s+(\d{1,2})(?!:\d{2})\b",
+        r"\1 \2:00",
+        value,
+        flags=re.IGNORECASE,
+    )
+    normalized_value = re.sub(
+        r"\b(today|yesterday|day before yesterday)\s+at\s+",
+        r"\1 ",
+        normalized_value,
+        flags=re.IGNORECASE,
+    )
+    parsed = dateparser.parse(
+        normalized_value,
+        languages=["en"],
+        settings={
+            "RELATIVE_BASE": relative_base,
+            "TIMEZONE": timezone_name,
+            "TO_TIMEZONE": timezone_name,
+            "RETURN_AS_TIMEZONE_AWARE": True,
+            "PREFER_DATES_FROM": "past",
+        },
+    )
+    if parsed is None:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone)
+    return parsed.astimezone(timezone)
 
 
 def commands_help_text() -> str:
