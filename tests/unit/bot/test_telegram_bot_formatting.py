@@ -311,7 +311,7 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         text = _render_problem_rows(rows, "Europe/Berlin")
         self.assertLess(text.find("Earlier Problem"), text.find("Later Problem"))
 
-    def test_render_problem_rows_shows_search_match_details(self) -> None:
+    def test_render_problem_rows_highlights_search_match_inline(self) -> None:
         rows = [
             {
                 "user_problem_id": 10,
@@ -330,9 +330,8 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
 
         text = _render_problem_rows(rows, "Europe/Berlin", search_query="28")
 
-        self.assertIn("Matched on:", text)
-        self.assertIn("Solved Date", text)
-        self.assertIn("(<b>28</b> March 2026)", text)
+        self.assertNotIn("Matched on:", text)
+        self.assertIn("<i>Medium • Backtracking • <b>28</b> Mar 21:08 CET</i>", text)
 
     def test_render_due_includes_header_token_and_human_time(self) -> None:
         items = [

@@ -484,11 +484,29 @@ def render_problem_rows(
         for row in sorted_rows:
             lc = leetcode_url(row["leetcode_slug"] or None)
             nc = neetcode_url(row["neetcode_slug"] or None)
-            lines.append(f"{idx}. {_code(row['problem_ref'])} {escape(row['title'])}")
+            matched_field = str(row.get("matched_field", ""))
+            title_html = escape(row["title"])
+            difficulty_html = escape(row["difficulty"].title())
+            pattern_html = escape(row["pattern"])
+            solved_at_html = escape(format_timestamp_compact(row["solved_at"], timezone_name))
+            if search_query:
+                if matched_field == "title":
+                    title_html = _highlight_html(row["title"], search_query)
+                elif matched_field == "difficulty":
+                    difficulty_html = _highlight_html(row["difficulty"].title(), search_query)
+                elif matched_field == "pattern":
+                    pattern_html = _highlight_html(row["pattern"], search_query)
+                elif matched_field == "solved date":
+                    solved_at_html = _highlight_html(
+                        format_timestamp_compact(row["solved_at"], timezone_name),
+                        search_query,
+                    )
+
+            lines.append(f"{idx}. {_code(row['problem_ref'])} {title_html}")
             lines.append(
                 (
-                    f"   <i>{escape(row['difficulty'].title())} • {escape(row['pattern'])} • "
-                    f"{escape(format_timestamp_compact(row['solved_at'], timezone_name))}</i>"
+                    f"   <i>{difficulty_html} • {pattern_html} • "
+                    f"{solved_at_html}</i>"
                 )
             )
             lines.append(f"   Use {_code('/show ' + row['problem_ref'])}")
@@ -496,12 +514,6 @@ def render_problem_rows(
                 lines.append(f"   {_bold('LC:')} {_link('Open LeetCode', lc)}")
             if nc:
                 lines.append(f"   {_bold('NC:')} {_link('Open NeetCode', nc)}")
-            if search_query and row.get("matched_field") and row.get("matched_text"):
-                lines.append(
-                    "   "
-                    f"{_bold('Matched on:')} {escape(str(row['matched_field']).title())} "
-                    f"({_highlight_html(str(row['matched_text']), search_query)})"
-                )
             idx += 1
         lines.append("")
     if lines and not lines[-1]:
