@@ -18,7 +18,7 @@ class AnalyticsToolsUnitTest(unittest.TestCase):
         self.assertEqual(definition["name"], "aggregate_user_problems")
         self.assertEqual(
             params["group_by"]["enum"],
-            ["none", "difficulty", "pattern", "solved_date"],
+            ["none", "difficulty", "pattern", "solved_date", "solved_month"],
         )
         self.assertEqual(
             params["metric"]["enum"],

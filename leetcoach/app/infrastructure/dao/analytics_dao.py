@@ -42,6 +42,7 @@ def list_aggregated_user_problems(
         "difficulty": "lower(p.difficulty)",
         "pattern": "COALESCE(canonical_pattern_label(up.pattern), up.pattern)",
         "solved_date": "local_date(up.solved_at, u.timezone)",
+        "solved_month": "substr(local_date(up.solved_at, u.timezone), 1, 7)",
     }
     metric_expr_map = {
         "problem_count": "COUNT(*)",
