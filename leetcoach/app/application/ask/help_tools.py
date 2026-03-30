@@ -61,6 +61,7 @@ def execute_describe_ask_capabilities(*, arguments: dict[str, Any]) -> dict[str,
                 "how many easy problems have I solved in Trees?",
                 "what is my strongest pattern?",
                 "which day did I solve the most problems?",
+                "which month saw me complete most problems?",
             ],
         },
     ]

@@ -14,7 +14,7 @@ from leetcoach.app.application.shared.patterns import (
     canonical_pattern_label,
 )
 
-AggregateGroupBy = Literal["none", "difficulty", "pattern", "solved_date"]
+AggregateGroupBy = Literal["none", "difficulty", "pattern", "solved_date", "solved_month"]
 AggregateMetric = Literal["problem_count", "review_count_sum", "strength_score"]
 AggregateSort = Literal["metric_desc", "metric_asc", "group_asc", "group_desc"]
 
@@ -23,6 +23,7 @@ VALID_GROUP_BY: tuple[AggregateGroupBy, ...] = (
     "difficulty",
     "pattern",
     "solved_date",
+    "solved_month",
 )
 VALID_METRICS: tuple[AggregateMetric, ...] = (
     "problem_count",

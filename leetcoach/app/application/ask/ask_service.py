@@ -299,6 +299,7 @@ def _build_prompt(
         '- "what is due?" -> get_due_reviews\n'
         '- "what did you remind me last?" -> get_last_reminder_batch\n'
         '- "how many easy problems have I solved in Trees?" -> aggregate_user_problems\n'
+        '- "which month saw me complete most problems?" -> aggregate_user_problems with group_by solved_month\n'
         "Available tool definitions:\n"
         f"{json.dumps(_tool_definitions(), ensure_ascii=True)}\n"
         "Previous tool executions:\n"

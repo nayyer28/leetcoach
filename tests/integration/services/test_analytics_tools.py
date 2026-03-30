@@ -126,6 +126,53 @@ class AnalyticsToolsIntegrationTest(unittest.TestCase):
             self.assertEqual(result.rows[0].group, "2026-03-02")
             self.assertEqual(result.rows[0].value, 2)
 
+    def test_solved_month_aggregation_uses_user_timezone(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+
+            log_problem(
+                db_path,
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="Europe/Berlin",
+                    title="Contains Duplicate",
+                    difficulty="easy",
+                    leetcode_slug="contains-duplicate",
+                    neetcode_slug="contains-duplicate",
+                    pattern="arrays",
+                    solved_at="2026-03-31T22:30:00+00:00",
+                ),
+            )
+            log_problem(
+                db_path,
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="Europe/Berlin",
+                    title="Two Sum",
+                    difficulty="easy",
+                    leetcode_slug="two-sum",
+                    neetcode_slug="two-sum",
+                    pattern="arrays",
+                    solved_at="2026-03-31T23:15:00+00:00",
+                ),
+            )
+
+            result = aggregate_user_problems(
+                db_path,
+                "u-1",
+                AggregateUserProblemsRequest(
+                    group_by="solved_month",
+                    metric="problem_count",
+                    sort="metric_desc",
+                ),
+            )
+
+            self.assertEqual(result.rows[0].group, "2026-04")
+            self.assertEqual(result.rows[0].value, 2)
+
     def test_strongest_pattern_uses_problem_count_plus_review_sum(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "leetcoach-test.db")
