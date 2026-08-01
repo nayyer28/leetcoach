@@ -134,6 +134,8 @@ def commands_help_text() -> str:
         "• /remind\n"
         "• /remind last\n"
         "• /remind new\n"
+        "• /remind stop\n"
+        "• /remind start\n"
         "• /remind count &lt;n&gt;\n"
         "• /remind time &lt;hour&gt;\n\n"
         "📚 <b>Browse</b>\n"
@@ -349,10 +351,16 @@ def render_remind_settings(
     effective_count: int,
     custom_hour: int | None,
     effective_hour: int,
+    reminders_paused: bool = False,
 ) -> str:
     return "\n".join(
         [
             "⏰ <b>Reminder Settings</b>",
+            (
+                f"{_bold('Status:')} ⏸️ paused (use /remind start to resume)"
+                if reminders_paused
+                else f"{_bold('Status:')} ▶️ active"
+            ),
             f"{_bold('Daily reminder count:')} {effective_count}",
             f"{_bold('Reminder hour:')} {effective_hour:02d}:00",
             (
@@ -366,7 +374,10 @@ def render_remind_settings(
                 else f"{_bold('Hour source:')} your custom setting"
             ),
             "",
-            f"{_bold('Commands:')} /remind last, /remind new, /remind count &lt;n&gt;, /remind time &lt;hour&gt;",
+            (
+                f"{_bold('Commands:')} /remind last, /remind new, /remind stop, "
+                f"/remind start, /remind count &lt;n&gt;, /remind time &lt;hour&gt;"
+            ),
         ]
     )
 
@@ -397,6 +408,8 @@ def remind_usage_text() -> str:
         "/remind\n"
         "/remind last\n"
         "/remind new\n"
+        "/remind stop\n"
+        "/remind start\n"
         "/remind count <n>\n"
         "/remind time <hour>"
     )

@@ -69,6 +69,7 @@ from leetcoach.app.infrastructure.dao.users_dao import (
     get_user_reminder_preferences,
     set_user_reminder_daily_max,
     set_user_reminder_hour_local,
+    set_user_reminders_paused,
     upsert_user,
 )
 from leetcoach.app.infrastructure.llm.gemini_provider import (
@@ -929,6 +930,7 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             else None
         )
         user_timezone = str(prefs["timezone"])
+        reminders_paused = bool(prefs["reminders_paused"])
 
         if not context.args:
             await update.message.reply_text(
@@ -941,11 +943,48 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                         if custom_hour is not None
                         else cfg.reminder_hour_local
                     ),
+                    reminders_paused=reminders_paused,
                 )
             )
             return
 
         action = context.args[0].lower()
+        if action in ("stop", "start"):
+            if len(context.args) != 1:
+                await update.message.reply_text(f"Usage: /remind {action}")
+                return
+            should_pause = action == "stop"
+            if should_pause == reminders_paused:
+                await update.message.reply_text(
+                    "⏸️ Reminders are already stopped. Use /remind start to resume."
+                    if reminders_paused
+                    else "▶️ Reminders are already active."
+                )
+                return
+            updated = set_user_reminders_paused(
+                conn,
+                telegram_user_id=telegram_user_id,
+                reminders_paused=should_pause,
+                now_iso=now_iso,
+            )
+            if not updated:
+                await update.message.reply_text("⚠️ Please run /start first.")
+                return
+            conn.commit()
+            await update.message.reply_text(
+                (
+                    "⏸️ Stopped scheduled reminders.\n"
+                    "You will not receive new reminders until you run /remind start.\n"
+                    "/remind new still works if you want one on demand."
+                )
+                if should_pause
+                else (
+                    "▶️ Resumed scheduled reminders.\n"
+                    "Use /remind to check your settings."
+                )
+            )
+            return
+
         if action == "count":
             if len(context.args) != 2:
                 await update.message.reply_text("Usage: /remind count <n>")
