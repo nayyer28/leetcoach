@@ -437,6 +437,56 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             self.assertEqual(str(rows[0]["title"]), "Longest Substring")
             self.assertEqual(str(rows[1]["title"]), "Merge Two Sorted Lists")
 
+    def test_scheduler_excludes_paused_users(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "leetcoach-test.db"
+            migrate_database(str(db_path))
+            log_problem(
+                str(db_path),
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="UTC",
+                    title="Two Sum",
+                    difficulty="easy",
+                    leetcode_slug="two-sum",
+                    neetcode_slug="two-sum",
+                    pattern="arrays",
+                    solved_at="2026-01-01T10:00:00+00:00",
+                    notes="",
+                ),
+            )
+            log_problem(
+                str(db_path),
+                LogProblemInput(
+                    telegram_user_id="u-2",
+                    telegram_chat_id="chat-2",
+                    timezone="UTC",
+                    title="Valid Anagram",
+                    difficulty="easy",
+                    leetcode_slug="valid-anagram",
+                    neetcode_slug="valid-anagram",
+                    pattern="arrays",
+                    solved_at="2026-01-01T10:00:00+00:00",
+                    notes="",
+                ),
+            )
+
+            with get_connection(str(db_path)) as conn:
+                rows = list_next_review_candidates_for_scheduler(conn)
+                self.assertEqual(len(rows), 2)
+
+                conn.execute(
+                    "UPDATE users SET reminders_paused = 1 WHERE telegram_user_id = ?",
+                    ("u-1",),
+                )
+                conn.commit()
+
+                rows = list_next_review_candidates_for_scheduler(conn)
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(str(rows[0]["title"]), "Valid Anagram")
+
 
 if __name__ == "__main__":
     unittest.main()

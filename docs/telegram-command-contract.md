@@ -19,6 +19,8 @@ Important boundary:
 - `/remind`
 - `/remind last`
 - `/remind new`
+- `/remind stop`
+- `/remind start`
 - `/remind count <n>`
 - `/remind time <hour>`
 - `/list`
@@ -205,10 +207,20 @@ Current search behavior includes fields such as:
 ### `/remind new`
 - sends one extra review candidate immediately
 
+### `/remind stop`
+- stops the scheduler from sending new reminders to this user
+- takes effect immediately and persists until resumed
+- `/remind new` still works, since that is an explicit manual pull
+- `/remind` shows the paused status
+
+### `/remind start`
+- resumes scheduled reminders
+
 Scheduler notes:
 - reminders are sent by the scheduler worker
 - the scheduler respects local reminder hour
 - the scheduler respects user-specific overrides when present
+- the scheduler skips users who have stopped reminders
 - the scheduler no longer sends a separate daily header message before reminder entries
 
 ## `/ask <question>`

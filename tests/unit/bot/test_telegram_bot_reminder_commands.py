@@ -41,6 +41,27 @@ def _update() -> SimpleNamespace:
     )
 
 
+def _insert_user(db_path: str, *, reminders_paused: int = 0) -> None:
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                telegram_user_id, telegram_chat_id, timezone, reminders_paused,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "u-1",
+                "chat-1",
+                "UTC",
+                reminders_paused,
+                "2026-03-16T10:00:00+00:00",
+                "2026-03-16T10:00:00+00:00",
+            ),
+        )
+        conn.commit()
+
+
 class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
     async def test_remind_without_args_shows_effective_settings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -223,6 +244,116 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
                     "SELECT last_review_requested_at FROM user_problems"
                 ).fetchone()
                 self.assertIsNotNone(row["last_review_requested_at"])
+
+    async def test_remind_stop_pauses_reminders(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            _insert_user(db_path)
+
+            update = _update()
+            context = _context(db_path=db_path, args=["stop"])
+
+            await remind_command(update, context)
+
+            text = update.message.reply_text.await_args.args[0]
+            self.assertIn("Stopped scheduled reminders", text)
+            with get_connection(db_path) as conn:
+                row = conn.execute(
+                    "SELECT reminders_paused FROM users WHERE telegram_user_id = ?",
+                    ("u-1",),
+                ).fetchone()
+                self.assertEqual(int(row["reminders_paused"]), 1)
+
+    async def test_remind_start_resumes_reminders(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            _insert_user(db_path, reminders_paused=1)
+
+            update = _update()
+            context = _context(db_path=db_path, args=["start"])
+
+            await remind_command(update, context)
+
+            text = update.message.reply_text.await_args.args[0]
+            self.assertIn("Resumed scheduled reminders", text)
+            with get_connection(db_path) as conn:
+                row = conn.execute(
+                    "SELECT reminders_paused FROM users WHERE telegram_user_id = ?",
+                    ("u-1",),
+                ).fetchone()
+                self.assertEqual(int(row["reminders_paused"]), 0)
+
+    async def test_remind_stop_is_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            _insert_user(db_path, reminders_paused=1)
+
+            update = _update()
+            context = _context(db_path=db_path, args=["stop"])
+
+            await remind_command(update, context)
+
+            text = update.message.reply_text.await_args.args[0]
+            self.assertIn("already stopped", text)
+            with get_connection(db_path) as conn:
+                row = conn.execute(
+                    "SELECT reminders_paused FROM users WHERE telegram_user_id = ?",
+                    ("u-1",),
+                ).fetchone()
+                self.assertEqual(int(row["reminders_paused"]), 1)
+
+    async def test_remind_settings_shows_paused_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            _insert_user(db_path, reminders_paused=1)
+
+            update = _update()
+            context = _context(db_path=db_path, args=[])
+
+            await remind_command(update, context)
+
+            text = update.message.reply_text.await_args.args[0]
+            self.assertIn("paused", text)
+            self.assertIn("/remind start", text)
+
+    async def test_remind_new_still_works_while_paused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            log_problem(
+                db_path,
+                LogProblemInput(
+                    telegram_user_id="u-1",
+                    telegram_chat_id="chat-1",
+                    timezone="UTC",
+                    title="Two Sum",
+                    difficulty="easy",
+                    leetcode_slug="two-sum",
+                    neetcode_slug="two-sum",
+                    pattern="arrays",
+                    solved_at="2026-03-01T10:00:00+00:00",
+                    notes="",
+                ),
+            )
+            with get_connection(db_path) as conn:
+                conn.execute(
+                    "UPDATE users SET reminders_paused = 1 WHERE telegram_user_id = ?",
+                    ("u-1",),
+                )
+                conn.commit()
+
+            update = _update()
+            context = _context(db_path=db_path, args=["new"])
+
+            await remind_command(update, context)
+
+            text = update.message.reply_text.await_args.args[0]
+            self.assertIn("Manual Reminder", text)
+            self.assertIn("Two Sum", text)
 
 
 if __name__ == "__main__":

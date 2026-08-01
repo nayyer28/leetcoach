@@ -138,7 +138,8 @@ def list_next_review_candidates_for_scheduler(conn: sqlite3.Connection) -> list[
         FROM user_problems up
         JOIN problems p ON p.id = up.problem_id
         JOIN users u ON u.id = up.user_id
-        WHERE (
+        WHERE u.reminders_paused = 0
+          AND (
             up.last_review_requested_at IS NULL
             OR (
               up.last_reviewed_at IS NOT NULL
