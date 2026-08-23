@@ -148,6 +148,12 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("ID: P1", text)
             self.assertIn("Two Sum", text)
 
+            # The reminder body is plain text. Sending it as HTML made Telegram
+            # reject the message ("unsupported start tag"), so no parse_mode here.
+            self.assertIsNone(
+                update.message.reply_text.await_args.kwargs.get("parse_mode")
+            )
+
             # Manual /remind new is display-only: it stamps last_reminded_at for
             # daily de-dupe but leaves review_count alone. Only /reviewed <id>
             # advances the queue.

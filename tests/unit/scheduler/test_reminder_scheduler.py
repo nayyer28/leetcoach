@@ -86,7 +86,10 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
         self.assertIn("Reviews completed: 2", text)
         self.assertNotIn("Queue position", text)
         self.assertNotIn("Last reviewed", text)
-        self.assertIn("Use /reviewed <id>", text)
+        self.assertIn("Use /reviewed P1 when done.", text)
+        # Both send paths deliver this as plain text, so it must not contain
+        # anything Telegram's HTML parser would read as a tag.
+        self.assertNotIn("<", text)
 
     def test_scheduler_preflight_fails_when_token_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
