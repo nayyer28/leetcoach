@@ -101,22 +101,7 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "leetcoach-test.db")
             migrate_database(db_path)
-            with get_connection(db_path) as conn:
-                conn.execute(
-                    """
-                    INSERT INTO users (
-                        telegram_user_id, telegram_chat_id, timezone, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        "u-1",
-                        "chat-1",
-                        "UTC",
-                        "2026-03-16T10:00:00+00:00",
-                        "2026-03-16T10:00:00+00:00",
-                    ),
-                )
-                conn.commit()
+            _insert_user(db_path)
 
             update = _update()
             context = _context(db_path=db_path, args=["count", "4"])
@@ -138,22 +123,7 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "leetcoach-test.db")
             migrate_database(db_path)
-            with get_connection(db_path) as conn:
-                conn.execute(
-                    """
-                    INSERT INTO users (
-                        telegram_user_id, telegram_chat_id, timezone, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        "u-1",
-                        "chat-1",
-                        "UTC",
-                        "2026-03-16T10:00:00+00:00",
-                        "2026-03-16T10:00:00+00:00",
-                    ),
-                )
-                conn.commit()
+            _insert_user(db_path)
 
             update = _update()
             context = _context(db_path=db_path, args=["time", "13"])
@@ -171,46 +141,7 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
                 ).fetchone()
                 self.assertEqual(int(row["reminder_hour_local"]), 13)
 
-    async def test_remind_last_shows_latest_batch(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = str(Path(tmp) / "leetcoach-test.db")
-            migrate_database(db_path)
-            log_problem(
-                db_path,
-                LogProblemInput(
-                    telegram_user_id="u-1",
-                    telegram_chat_id="chat-1",
-                    timezone="UTC",
-                    title="Two Sum",
-                    difficulty="easy",
-                    leetcode_slug="two-sum",
-                    neetcode_slug="two-sum",
-                    pattern="arrays",
-                    solved_at="2026-03-01T10:00:00+00:00",
-                    notes="",
-                ),
-            )
-            with get_connection(db_path) as conn:
-                conn.execute(
-                    "UPDATE user_problems SET last_review_requested_at = ?, updated_at = ?",
-                    ("2026-03-16T09:00:00+00:00", "2026-03-16T09:00:00+00:00"),
-                )
-                conn.commit()
-
-            update = _update()
-            context = _context(db_path=db_path, args=["last"])
-
-            await remind_command(update, context)
-
-            text = update.message.reply_text.await_args.args[0]
-            self.assertIn("Last Reminder Batch", text)
-            self.assertIn("<code>P1</code>", text)
-            self.assertIn("Two Sum", text)
-            self.assertIn("LC:", text)
-            self.assertIn("NC:", text)
-            self.assertNotIn("Queue position", text)
-
-    async def test_remind_new_sends_one_extra_candidate(self) -> None:
+    async def test_remind_new_sends_top_of_queue_and_marks_reviewed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "leetcoach-test.db")
             migrate_database(db_path)
@@ -239,11 +170,34 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Manual Reminder", text)
             self.assertIn("ID: P1", text)
             self.assertIn("Two Sum", text)
+
+            # Manual /remind new goes through the same "mark reviewed" path
+            # as a scheduler-driven reminder: bumps review_count and stamps
+            # last_reminded_at on the user.
             with get_connection(db_path) as conn:
-                row = conn.execute(
-                    "SELECT last_review_requested_at FROM user_problems"
+                up_row = conn.execute(
+                    "SELECT review_count FROM user_problems"
                 ).fetchone()
-                self.assertIsNotNone(row["last_review_requested_at"])
+                self.assertEqual(int(up_row["review_count"]), 1)
+                user_row = conn.execute(
+                    "SELECT last_reminded_at FROM users WHERE telegram_user_id = ?",
+                    ("u-1",),
+                ).fetchone()
+                self.assertIsNotNone(user_row["last_reminded_at"])
+
+    async def test_remind_new_reports_empty_queue(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            _insert_user(db_path)
+
+            update = _update()
+            context = _context(db_path=db_path, args=["new"])
+
+            await remind_command(update, context)
+
+            text = update.message.reply_text.await_args.args[0]
+            self.assertIn("empty", text.lower())
 
     async def test_remind_stop_pauses_reminders(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

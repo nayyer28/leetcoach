@@ -29,10 +29,8 @@ from leetcoach.app.application.ask.help_tools import (
     execute_describe_ask_capabilities,
 )
 from leetcoach.app.application.ask.review_tools import (
-    execute_get_due_reviews,
-    execute_get_last_reminder_batch,
-    get_due_reviews_tool_definition,
-    get_last_reminder_batch_tool_definition,
+    execute_get_next_review,
+    get_next_review_tool_definition,
 )
 from leetcoach.app.infrastructure.llm.gemini_provider import (
     GeminiGenerateResult,
@@ -197,8 +195,7 @@ def _tool_definitions() -> list[dict[str, Any]]:
         list_user_problems_tool_definition(),
         search_user_problems_tool_definition(),
         query_user_problems_tool_definition(),
-        get_due_reviews_tool_definition(),
-        get_last_reminder_batch_tool_definition(),
+        get_next_review_tool_definition(),
     ]
 
 
@@ -243,14 +240,8 @@ def _execute_tool(
             telegram_user_id=telegram_user_id,
             arguments=arguments,
         )
-    if tool_name == "get_due_reviews":
-        return execute_get_due_reviews(
-            db_path=db_path,
-            telegram_user_id=telegram_user_id,
-            arguments=arguments,
-        )
-    if tool_name == "get_last_reminder_batch":
-        return execute_get_last_reminder_batch(
+    if tool_name == "get_next_review":
+        return execute_get_next_review(
             db_path=db_path,
             telegram_user_id=telegram_user_id,
             arguments=arguments,
@@ -296,8 +287,8 @@ def _build_prompt(
         '- "search for two sum" -> search_user_problems\n'
         '- "show me all problems I solved in Feb 2026" -> query_user_problems\n'
         '- "show my hard tree problems from March 2026" -> query_user_problems\n'
-        '- "what is due?" -> get_due_reviews\n'
-        '- "what did you remind me last?" -> get_last_reminder_batch\n'
+        '- "what is due?" -> get_next_review\n'
+        '- "what should I review next?" -> get_next_review\n'
         '- "how many easy problems have I solved in Trees?" -> aggregate_user_problems\n'
         '- "which month saw me complete most problems?" -> aggregate_user_problems with group_by solved_month\n'
         "Available tool definitions:\n"

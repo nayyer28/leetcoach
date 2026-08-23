@@ -8,74 +8,77 @@ from leetcoach.app.infrastructure.config.app_config import AppConfig
 from leetcoach.app.misc.migrate import migrate_database
 from leetcoach.app.application.reviews.reminder_engine import (
     ReminderCandidate,
-    build_daily_header_message,
     build_reminder_message,
     scheduler_preflight,
-    select_candidates_for_batch,
-    should_send_today,
-    was_group_reminded_today,
+    was_user_reminded_today,
 )
 
 
+def _candidate(
+    *,
+    title: str = "X",
+    review_count: int = 0,
+    entered_at: str = "2026-03-01T10:00:00+00:00",
+    solved_at: str = "2026-03-01T10:00:00+00:00",
+    timezone: str = "UTC",
+    last_reminded_at: str | None = None,
+) -> ReminderCandidate:
+    return ReminderCandidate(
+        user_problem_id=1,
+        display_id=1,
+        problem_ref="P1",
+        user_id=1,
+        review_count=review_count,
+        entered_at=entered_at,
+        solved_at=solved_at,
+        title=title,
+        leetcode_slug="x",
+        neetcode_slug="x",
+        telegram_chat_id="chat-1",
+        timezone=timezone,
+        reminder_daily_max=None,
+        reminder_hour_local=None,
+        last_reminded_at=last_reminded_at,
+    )
+
+
 class ReminderSchedulerUnitTest(unittest.TestCase):
-    def _candidate(
+    def test_was_user_reminded_today_false_when_never_reminded(self) -> None:
+        self.assertFalse(
+            was_user_reminded_today(
+                last_reminded_at=None,
+                now_iso="2026-03-08T12:00:00+00:00",
+                timezone_name="Europe/Berlin",
+            )
+        )
+
+    def test_was_user_reminded_today_true_same_local_day(self) -> None:
+        self.assertTrue(
+            was_user_reminded_today(
+                last_reminded_at="2026-03-08T08:00:00+00:00",
+                now_iso="2026-03-08T20:00:00+00:00",
+                timezone_name="Europe/Berlin",
+            )
+        )
+
+    def test_was_user_reminded_today_false_on_new_local_day_even_same_utc_day(
         self,
-        *,
-        title: str = "X",
-        queue_position: int = 10,
-        last_review_requested_at: str | None = None,
-        last_reviewed_at: str | None = None,
-        review_count: int = 0,
-        timezone: str = "UTC",
-    ) -> ReminderCandidate:
-        return ReminderCandidate(
-            user_problem_id=1,
-            display_id=1,
-            problem_ref="P1",
-            user_id=1,
-            queue_position=queue_position,
-            last_review_requested_at=last_review_requested_at,
-            last_reviewed_at=last_reviewed_at,
-            review_count=review_count,
-            solved_at="2026-03-01T10:00:00+00:00",
-            title=title,
-            leetcode_slug="x",
-            neetcode_slug="x",
-            telegram_chat_id="chat-1",
-            timezone=timezone,
-            reminder_daily_max=None,
-            reminder_hour_local=None,
+    ) -> None:
+        # Kiritimati is UTC+14 — 10:15 UTC is already the next calendar day locally.
+        self.assertFalse(
+            was_user_reminded_today(
+                last_reminded_at="2026-03-09T09:30:00+00:00",
+                now_iso="2026-03-09T10:15:00+00:00",
+                timezone_name="Pacific/Kiritimati",
+            )
         )
-
-    def test_should_send_today_true_when_never_reminded(self) -> None:
-        candidate = self._candidate(timezone="Europe/Berlin")
-        self.assertTrue(should_send_today(candidate, "2026-03-08T12:00:00+00:00"))
-
-    def test_should_send_today_false_same_local_day(self) -> None:
-        candidate = self._candidate(
-            timezone="Europe/Berlin",
-            last_review_requested_at="2026-03-08T08:00:00+00:00",
-        )
-        self.assertFalse(should_send_today(candidate, "2026-03-08T20:00:00+00:00"))
 
     def test_build_reminder_message_contains_key_fields(self) -> None:
-        candidate = ReminderCandidate(
-            user_problem_id=1,
-            display_id=1,
-            problem_ref="P1",
-            user_id=1,
-            queue_position=30,
-            last_review_requested_at=None,
-            last_reviewed_at="2026-03-15T10:00:00+00:00",
-            review_count=2,
-            solved_at="2026-03-01T10:00:00+00:00",
+        candidate = _candidate(
             title="LRU Cache",
-            leetcode_slug="lru-cache",
-            neetcode_slug="lru-cache",
-            telegram_chat_id="chat-1",
-            timezone="UTC",
-            reminder_daily_max=None,
-            reminder_hour_local=None,
+            review_count=2,
+            entered_at="2026-03-15T10:00:00+00:00",
+            solved_at="2026-03-01T10:00:00+00:00",
         )
         text = build_reminder_message(candidate)
         self.assertIn("LeetCoach Reminder", text)
@@ -83,43 +86,8 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
         self.assertIn("LRU Cache", text)
         self.assertIn("Reviews completed: 2", text)
         self.assertNotIn("Queue position", text)
-        self.assertIn("Use /due, then /reviewed <id>", text)
-
-    def test_should_send_today_true_on_new_local_day_even_same_utc_day(self) -> None:
-        candidate = self._candidate(
-            timezone="Pacific/Kiritimati",
-            last_review_requested_at="2026-03-09T09:30:00+00:00",
-        )
-        self.assertTrue(should_send_today(candidate, "2026-03-09T10:15:00+00:00"))
-
-    def test_was_group_reminded_today_true_when_any_candidate_was_sent_today(self) -> None:
-        candidates = [
-            self._candidate(title="A"),
-            self._candidate(title="B", last_review_requested_at="2026-03-09T08:00:00+00:00"),
-        ]
-        self.assertTrue(
-            was_group_reminded_today(candidates, "2026-03-09T12:00:00+00:00", "UTC")
-        )
-
-    def test_select_candidates_for_batch_uses_queue_order(self) -> None:
-        selected = select_candidates_for_batch(
-            [
-                self._candidate(title="Second", queue_position=20),
-                self._candidate(title="First", queue_position=10),
-                self._candidate(
-                    title="Already requested today",
-                    queue_position=5,
-                    last_review_requested_at="2026-03-09T07:00:00+00:00",
-                ),
-            ],
-            now_iso="2026-03-09T09:00:00+00:00",
-            daily_max=2,
-        )
-        self.assertEqual([candidate.title for candidate in selected], ["First", "Second"])
-
-    def test_build_daily_header_message(self) -> None:
-        text = build_daily_header_message()
-        self.assertEqual(text, "")
+        self.assertNotIn("Last reviewed", text)
+        self.assertIn("Use /reviewed <id>", text)
 
     def test_scheduler_preflight_fails_when_token_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -138,7 +106,10 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
             result = scheduler_preflight(cfg)
             self.assertFalse(result.ok)
             self.assertTrue(
-                any("LEETCOACH_TELEGRAM_BOT_TOKEN is missing" in issue for issue in result.issues)
+                any(
+                    "LEETCOACH_TELEGRAM_BOT_TOKEN is missing" in issue
+                    for issue in result.issues
+                )
             )
 
     def test_scheduler_preflight_fails_on_unmigrated_db(self) -> None:
