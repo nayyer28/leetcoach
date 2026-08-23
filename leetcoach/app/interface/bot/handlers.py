@@ -917,6 +917,21 @@ async def _show_remind_schedule_review(
     return REMIND_SCHEDULE_REVIEW
 
 
+def _active_text_flow_name(context: ContextTypes.DEFAULT_TYPE) -> str | None:
+    """Name the log/edit form the user is already in, if any.
+
+    log_flow and edit_flow are registered ahead of remind_flow, so while one of
+    them is waiting on a text answer it swallows every plain message — including
+    the hour typed into the reminder form, which would land as a problem title.
+    Refuse to open the reminder form rather than let two forms race for input.
+    """
+    if context.user_data.get("log_payload") is not None:
+        return "a /log"
+    if context.user_data.get("edit_problem_detail") is not None:
+        return "an /edit"
+    return None
+
+
 async def _prompt_remind_schedule_mode(target: Any) -> int:
     await target.reply_text(
         "⏰ Scheduled reminders — start or stop them?",
@@ -942,6 +957,8 @@ async def remind_schedule_mode_callback(
         return ConversationHandler.END
     if action == "stop":
         draft["new_paused"] = True
+        # Stopping says nothing about the hour, so leave hour_explicit False and
+        # keep showing whatever is in effect today.
         draft["new_hour"] = draft["current_hour"]
         return await _show_remind_schedule_review(query.message, context)
     draft["new_paused"] = False
@@ -967,6 +984,7 @@ async def remind_schedule_time(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("⚠️ Reminder hour must be between 0 and 23.")
         return REMIND_SCHEDULE_TIME
     draft["new_hour"] = value
+    draft["hour_explicit"] = True
     return await _show_remind_schedule_review(update.message, context)
 
 
@@ -992,19 +1010,23 @@ async def remind_schedule_review_callback(
     telegram_user_id = _telegram_user_id(update)
     now_iso = datetime.now(UTC).isoformat()
     with get_connection(cfg.db_path) as conn:
-        paused_ok = set_user_reminders_paused(
+        saved = set_user_reminders_paused(
             conn,
             telegram_user_id=telegram_user_id,
             reminders_paused=draft["new_paused"],
             now_iso=now_iso,
         )
-        hour_ok = set_user_reminder_hour_local(
-            conn,
-            telegram_user_id=telegram_user_id,
-            reminder_hour_local=draft["new_hour"],
-            now_iso=now_iso,
-        )
-        if not (paused_ok and hour_ok):
+        # Only write the hour when the user picked one. A NULL reminder_hour_local
+        # means "inherit LEETCOACH_REMINDER_HOUR_LOCAL"; writing the effective hour
+        # on the Stop path would silently freeze that inheritance into an override.
+        if draft.get("hour_explicit"):
+            saved = saved and set_user_reminder_hour_local(
+                conn,
+                telegram_user_id=telegram_user_id,
+                reminder_hour_local=draft["new_hour"],
+                now_iso=now_iso,
+            )
+        if not saved:
             await query.message.reply_text("⚠️ Please run /start first.")
             context.user_data.pop("remind_schedule", None)
             return ConversationHandler.END
@@ -1071,11 +1093,19 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if len(context.args) != 1:
                 await update.message.reply_text("Usage: /remind schedule")
                 return ConversationHandler.END
+            blocking_flow = _active_text_flow_name(context)
+            if blocking_flow is not None:
+                await update.message.reply_text(
+                    f"⚠️ You are in the middle of {blocking_flow}. "
+                    f"Finish it or send /cancel, then run /remind schedule."
+                )
+                return ConversationHandler.END
             context.user_data["remind_schedule"] = {
                 "current_paused": reminders_paused,
                 "current_hour": effective_hour,
                 "new_paused": reminders_paused,
                 "new_hour": effective_hour,
+                "hour_explicit": False,
             }
             return await _prompt_remind_schedule_mode(update.message)
 
