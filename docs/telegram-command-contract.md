@@ -16,10 +16,8 @@ Important boundary:
 - `/ask <question>`
 - `/reviewed P1`
 - `/remind`
-- `/remind new`
-- `/remind stop`
-- `/remind start`
-- `/remind time <hour>`
+- `/remind now`
+- `/remind schedule`
 - `/list`
 - `/pattern <text>`
 - `/search <text>`
@@ -187,21 +185,18 @@ Current search behavior includes fields such as:
 ### `/remind`
 - shows effective reminder settings for the current user
 
-### `/remind time <hour>`
-- sets a user-specific reminder hour
-
-### `/remind new`
+### `/remind now`
 - shows the top of the user's review queue immediately
 - display-only: stamps the daily de-dupe timestamp, does not advance the queue
+- works even while scheduled reminders are stopped, since it is an explicit pull
+- `/remind new` is accepted as an alias for the old spelling
 
-### `/remind stop`
-- stops the scheduler from sending new reminders to this user
-- takes effect immediately and persists until resumed
-- `/remind new` still works, since that is an explicit manual pull
-- `/remind` shows the paused status
-
-### `/remind start`
-- resumes scheduled reminders
+### `/remind schedule`
+- guided form for scheduled reminders, in the style of `/log`
+- asks Start or Stop
+- on Start, asks which local hour (0-23)
+- shows a draft of the change with Save / Edit / Cancel
+- nothing is written until Save is pressed
 
 Scheduler notes:
 - reminders are sent by the scheduler worker

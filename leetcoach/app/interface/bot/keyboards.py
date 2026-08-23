@@ -60,6 +60,18 @@ def log_review_action_markup(*, callback_prefix: str) -> InlineKeyboardMarkup:
     )
 
 
+def remind_schedule_mode_markup(*, callback_prefix: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Start", callback_data=f"{callback_prefix}start"),
+                InlineKeyboardButton("Stop", callback_data=f"{callback_prefix}stop"),
+            ],
+            [InlineKeyboardButton("Cancel", callback_data=f"{callback_prefix}cancel")],
+        ]
+    )
+
+
 def log_edit_field_markup(*, callback_prefix: str) -> InlineKeyboardMarkup:
     rows = [
         [("Title", "title"), ("Difficulty", "difficulty")],
