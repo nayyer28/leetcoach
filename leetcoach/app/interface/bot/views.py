@@ -130,10 +130,8 @@ def commands_help_text() -> str:
         "⏰ <b>Review</b>\n"
         "• /reviewed P1\n\n"
         "• /remind\n"
-        "• /remind new\n"
-        "• /remind stop\n"
-        "• /remind start\n"
-        "• /remind time &lt;hour&gt;\n\n"
+        "• /remind now\n"
+        "• /remind schedule\n\n"
         "📚 <b>Browse</b>\n"
         "• /list\n"
         "• /pattern &lt;text&gt;\n"
@@ -318,7 +316,7 @@ def render_remind_settings(
         [
             "⏰ <b>Reminder Settings</b>",
             (
-                f"{_bold('Status:')} ⏸️ paused (use /remind start to resume)"
+                f"{_bold('Status:')} ⏸️ paused (use /remind schedule to resume)"
                 if reminders_paused
                 else f"{_bold('Status:')} ▶️ active"
             ),
@@ -329,12 +327,38 @@ def render_remind_settings(
                 else f"{_bold('Hour source:')} your custom setting"
             ),
             "",
-            (
-                f"{_bold('Commands:')} /remind new, /remind stop, "
-                f"/remind start, /remind time &lt;hour&gt;"
-            ),
+            f"{_bold('Commands:')} /remind now, /remind schedule",
         ]
     )
+
+
+def _remind_schedule_label(*, reminders_paused: bool, hour: int) -> str:
+    if reminders_paused:
+        return "⏸️ stopped"
+    return f"▶️ active, daily at {hour:02d}:00"
+
+
+def render_remind_schedule_review(
+    *,
+    current_paused: bool,
+    current_hour: int,
+    new_paused: bool,
+    new_hour: int,
+) -> str:
+    before = _remind_schedule_label(reminders_paused=current_paused, hour=current_hour)
+    after = _remind_schedule_label(reminders_paused=new_paused, hour=new_hour)
+    lines = [
+        "🧾 <b>Review Reminder Schedule</b>",
+        "",
+        f"{_bold('Now:')} {before}",
+        f"{_bold('After save:')} {after}",
+    ]
+    if before == after:
+        lines.append("")
+        lines.append("<i>No change — saving this leaves your schedule as it is.</i>")
+    lines.append("")
+    lines.append("<i>Save these changes, edit them, or cancel.</i>")
+    return "\n".join(lines)
 
 
 def render_next_review(candidate, timezone_name: str) -> str:
@@ -356,14 +380,7 @@ def render_next_review(candidate, timezone_name: str) -> str:
 
 
 def remind_usage_text() -> str:
-    return (
-        "Usage:\n"
-        "/remind\n"
-        "/remind new\n"
-        "/remind stop\n"
-        "/remind start\n"
-        "/remind time <hour>"
-    )
+    return "Usage:\n/remind\n/remind now\n/remind schedule"
 
 
 def render_quiz_question(question: QuizQuestionPayload, model_used: str | None) -> str:

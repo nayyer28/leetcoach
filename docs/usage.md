@@ -77,7 +77,7 @@ Current Telegram surface:
 - `/log`, `/log show [n]`
 - `/ask <question>`
 - `/reviewed P1`
-- `/remind`, `/remind new`, `/remind stop`, `/remind start`, `/remind time <hour>`
+- `/remind`, `/remind now`, `/remind schedule`
 - `/list`, `/pattern <text>`, `/search <text>`
 - `/show P1`, `/edit P1`
 - `/quiz`, `/quiz <topic>`, `/reveal`
@@ -152,9 +152,9 @@ Reminder behavior today:
 Reminder-related commands:
 - `/reviewed P1` marks one problem reviewed (the only thing that advances the queue)
 - `/remind` shows your effective reminder settings
-- `/remind new` shows the top of your queue immediately
-- `/remind stop` / `/remind start` pause and resume scheduled reminders
-- `/remind time <hour>` sets your local reminder hour
+- `/remind now` shows the top of your queue immediately
+- `/remind schedule` opens a guided form to start/stop reminders and set the hour,
+  showing a draft you confirm with Save
 
 ## 8. Logging And Editing UX
 

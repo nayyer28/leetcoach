@@ -86,6 +86,7 @@ from leetcoach.app.interface.bot.keyboards import (
     log_edit_field_markup as _log_edit_field_markup_impl,
     log_review_action_markup as _log_review_action_markup_impl,
     pattern_inline_markup as _pattern_inline_markup_impl,
+    remind_schedule_mode_markup as _remind_schedule_mode_markup_impl,
 )
 from leetcoach.app.interface.bot.views import (
     chunk_text as _chunk_text,
@@ -108,6 +109,7 @@ from leetcoach.app.interface.bot.views import (
     render_quiz_feedback as _render_quiz_feedback,
     render_quiz_question as _render_quiz_question,
     render_quiz_reveal as _render_quiz_reveal,
+    render_remind_schedule_review as _render_remind_schedule_review,
     render_remind_settings as _render_remind_settings,
     unknown_command_help_text as _unknown_command_help_text,
     unknown_text_help_text as _unknown_text_help_text,
@@ -146,6 +148,8 @@ LOG_EDIT_PATTERN_CALLBACK_PREFIX = "log:editpattern:"
 EDIT_FIELD_CALLBACK_PREFIX = "edit:field:"
 EDIT_DIFFICULTY_CALLBACK_PREFIX = "edit:difficulty:"
 EDIT_PATTERN_CALLBACK_PREFIX = "edit:pattern:"
+REMIND_SCHEDULE_MODE_CALLBACK_PREFIX = "remind:mode:"
+REMIND_SCHEDULE_REVIEW_CALLBACK_PREFIX = "remind:review:"
 
 (
     LOG_TITLE,
@@ -167,7 +171,10 @@ EDIT_PATTERN_CALLBACK_PREFIX = "edit:pattern:"
     EDIT_TEXT,
     EDIT_DIFFICULTY,
     EDIT_PATTERN,
-) = range(19)
+    REMIND_SCHEDULE_MODE,
+    REMIND_SCHEDULE_TIME,
+    REMIND_SCHEDULE_REVIEW,
+) = range(22)
 
 def _clear_quiz_prompt_state(context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data.pop("quiz_unknown_topic", None)
@@ -237,6 +244,18 @@ def _edit_difficulty_inline_markup() -> InlineKeyboardMarkup:
 
 def _edit_pattern_inline_markup() -> InlineKeyboardMarkup:
     return _pattern_inline_markup_impl(callback_prefix=EDIT_PATTERN_CALLBACK_PREFIX)
+
+
+def _remind_schedule_mode_markup() -> InlineKeyboardMarkup:
+    return _remind_schedule_mode_markup_impl(
+        callback_prefix=REMIND_SCHEDULE_MODE_CALLBACK_PREFIX
+    )
+
+
+def _remind_schedule_review_markup() -> InlineKeyboardMarkup:
+    return _log_review_action_markup_impl(
+        callback_prefix=REMIND_SCHEDULE_REVIEW_CALLBACK_PREFIX
+    )
 
 
 def _log_field_label(field: str) -> str:
@@ -881,10 +900,141 @@ async def log_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
-async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def _show_remind_schedule_review(
+    target: Any, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    draft: dict[str, Any] = context.user_data["remind_schedule"]
+    await target.reply_text(
+        _render_remind_schedule_review(
+            current_paused=draft["current_paused"],
+            current_hour=draft["current_hour"],
+            new_paused=draft["new_paused"],
+            new_hour=draft["new_hour"],
+        ),
+        reply_markup=_remind_schedule_review_markup(),
+        parse_mode=ParseMode.HTML,
+    )
+    return REMIND_SCHEDULE_REVIEW
+
+
+async def _prompt_remind_schedule_mode(target: Any) -> int:
+    await target.reply_text(
+        "⏰ Scheduled reminders — start or stop them?",
+        reply_markup=_remind_schedule_mode_markup(),
+    )
+    return REMIND_SCHEDULE_MODE
+
+
+async def remind_schedule_mode_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    query = update.callback_query
+    await query.answer()
+    await _clear_inline_keyboard(update)
+    action = query.data.removeprefix(REMIND_SCHEDULE_MODE_CALLBACK_PREFIX)
+    draft: dict[str, Any] = context.user_data.get("remind_schedule", {})
+    if not draft:
+        await query.message.reply_text("⚠️ That form expired. Run /remind schedule again.")
+        return ConversationHandler.END
+    if action == "cancel":
+        context.user_data.pop("remind_schedule", None)
+        await query.message.reply_text("🛑 Reminder schedule unchanged.")
+        return ConversationHandler.END
+    if action == "stop":
+        draft["new_paused"] = True
+        draft["new_hour"] = draft["current_hour"]
+        return await _show_remind_schedule_review(query.message, context)
+    draft["new_paused"] = False
+    await query.message.reply_text(
+        "What hour should reminders arrive? Send a number from 0 to 23 "
+        f"(currently {draft['current_hour']:02d}:00)."
+    )
+    return REMIND_SCHEDULE_TIME
+
+
+async def remind_schedule_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    draft: dict[str, Any] = context.user_data.get("remind_schedule", {})
+    if not draft:
+        await update.message.reply_text("⚠️ That form expired. Run /remind schedule again.")
+        return ConversationHandler.END
+    raw = (update.message.text or "").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        await update.message.reply_text("⚠️ Reminder hour must be a number from 0 to 23.")
+        return REMIND_SCHEDULE_TIME
+    if value < 0 or value > 23:
+        await update.message.reply_text("⚠️ Reminder hour must be between 0 and 23.")
+        return REMIND_SCHEDULE_TIME
+    draft["new_hour"] = value
+    return await _show_remind_schedule_review(update.message, context)
+
+
+async def remind_schedule_review_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    cfg: AppConfig = context.application.bot_data["config"]
+    query = update.callback_query
+    await query.answer()
+    await _clear_inline_keyboard(update)
+    action = query.data.removeprefix(REMIND_SCHEDULE_REVIEW_CALLBACK_PREFIX)
+    draft: dict[str, Any] = context.user_data.get("remind_schedule", {})
+    if not draft:
+        await query.message.reply_text("⚠️ That form expired. Run /remind schedule again.")
+        return ConversationHandler.END
+    if action == "cancel":
+        context.user_data.pop("remind_schedule", None)
+        await query.message.reply_text("🛑 Reminder schedule unchanged.")
+        return ConversationHandler.END
+    if action == "edit":
+        return await _prompt_remind_schedule_mode(query.message)
+
+    telegram_user_id = _telegram_user_id(update)
+    now_iso = datetime.now(UTC).isoformat()
+    with get_connection(cfg.db_path) as conn:
+        paused_ok = set_user_reminders_paused(
+            conn,
+            telegram_user_id=telegram_user_id,
+            reminders_paused=draft["new_paused"],
+            now_iso=now_iso,
+        )
+        hour_ok = set_user_reminder_hour_local(
+            conn,
+            telegram_user_id=telegram_user_id,
+            reminder_hour_local=draft["new_hour"],
+            now_iso=now_iso,
+        )
+        if not (paused_ok and hour_ok):
+            await query.message.reply_text("⚠️ Please run /start first.")
+            context.user_data.pop("remind_schedule", None)
+            return ConversationHandler.END
+        conn.commit()
+
+    context.user_data.pop("remind_schedule", None)
+    if draft["new_paused"]:
+        await query.message.reply_text(
+            "⏸️ Saved. Scheduled reminders are stopped.\n"
+            "/remind now still works if you want one on demand."
+        )
+    else:
+        await query.message.reply_text(
+            f"▶️ Saved. Reminders arrive daily at {draft['new_hour']:02d}:00."
+        )
+    return ConversationHandler.END
+
+
+async def remind_schedule_cancel(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    context.user_data.pop("remind_schedule", None)
+    await update.message.reply_text("🛑 Reminder schedule unchanged.")
+    return ConversationHandler.END
+
+
+async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
-        return
+        return ConversationHandler.END
     _interrupt_quiz_if_needed(cfg, update, context)
     telegram_user_id = _telegram_user_id(update)
     now_iso = datetime.now(UTC).isoformat()
@@ -893,7 +1043,7 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         prefs = get_user_reminder_preferences(conn, telegram_user_id=telegram_user_id)
         if prefs is None:
             await update.message.reply_text("⚠️ Please run /start first.")
-            return
+            return ConversationHandler.END
 
         user_id = int(prefs["id"])
         custom_hour = (
@@ -901,98 +1051,45 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if prefs["reminder_hour_local"] is not None
             else None
         )
+        effective_hour = (
+            custom_hour if custom_hour is not None else cfg.reminder_hour_local
+        )
         reminders_paused = bool(prefs["reminders_paused"])
 
         if not context.args:
             await update.message.reply_text(
                 _render_remind_settings(
                     custom_hour=custom_hour,
-                    effective_hour=(
-                        custom_hour
-                        if custom_hour is not None
-                        else cfg.reminder_hour_local
-                    ),
+                    effective_hour=effective_hour,
                     reminders_paused=reminders_paused,
                 )
             )
-            return
+            return ConversationHandler.END
 
         action = context.args[0].lower()
-        if action in ("stop", "start"):
+        if action == "schedule":
             if len(context.args) != 1:
-                await update.message.reply_text(f"Usage: /remind {action}")
-                return
-            should_pause = action == "stop"
-            if should_pause == reminders_paused:
-                await update.message.reply_text(
-                    "⏸️ Reminders are already stopped. Use /remind start to resume."
-                    if reminders_paused
-                    else "▶️ Reminders are already active."
-                )
-                return
-            updated = set_user_reminders_paused(
-                conn,
-                telegram_user_id=telegram_user_id,
-                reminders_paused=should_pause,
-                now_iso=now_iso,
-            )
-            if not updated:
-                await update.message.reply_text("⚠️ Please run /start first.")
-                return
-            conn.commit()
-            await update.message.reply_text(
-                (
-                    "⏸️ Stopped scheduled reminders.\n"
-                    "You will not receive new reminders until you run /remind start.\n"
-                    "/remind new still works if you want one on demand."
-                )
-                if should_pause
-                else (
-                    "▶️ Resumed scheduled reminders.\n"
-                    "Use /remind to check your settings."
-                )
-            )
-            return
+                await update.message.reply_text("Usage: /remind schedule")
+                return ConversationHandler.END
+            context.user_data["remind_schedule"] = {
+                "current_paused": reminders_paused,
+                "current_hour": effective_hour,
+                "new_paused": reminders_paused,
+                "new_hour": effective_hour,
+            }
+            return await _prompt_remind_schedule_mode(update.message)
 
-        if action == "time":
-            if len(context.args) != 2:
-                await update.message.reply_text("Usage: /remind time <hour>")
-                return
-            try:
-                value = int(context.args[1])
-            except ValueError:
-                await update.message.reply_text("⚠️ Reminder hour must be a number.")
-                return
-            if value < 0 or value > 23:
-                await update.message.reply_text(
-                    "⚠️ Reminder hour must be between 0 and 23."
-                )
-                return
-            updated = set_user_reminder_hour_local(
-                conn,
-                telegram_user_id=telegram_user_id,
-                reminder_hour_local=value,
-                now_iso=now_iso,
-            )
-            if not updated:
-                await update.message.reply_text("⚠️ Please run /start first.")
-                return
-            conn.commit()
-            await update.message.reply_text(
-                f"✅ Updated reminder hour to {value:02d}:00. Use /remind to check."
-            )
-            return
-
-        if action == "new":
+        # "new" is the pre-rename spelling, kept so muscle memory still works.
+        if action in ("now", "new"):
             if len(context.args) != 1:
-                await update.message.reply_text("Usage: /remind new")
-                return
+                await update.message.reply_text("Usage: /remind now")
+                return ConversationHandler.END
             row = peek_next_review_candidate_for_user(conn, user_id=user_id)
             if row is None:
                 await update.message.reply_text(
                     "✅ Your review queue is empty. Log a problem with /log."
                 )
-                return
+                return ConversationHandler.END
             candidate = row_to_candidate(row)
             # build_reminder_message is plain text (the scheduler sends it with no
             # parse_mode). Send it the same way here — routing it through the HTML
@@ -1005,9 +1102,10 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             # review_count only advances via /reviewed <id>.
             mark_user_reminded(conn, user_id=user_id, now_iso=now_iso)
             conn.commit()
-            return
+            return ConversationHandler.END
 
     await update.message.reply_text(_remind_usage_text())
+    return ConversationHandler.END
 
 
 async def reviewed_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1533,13 +1631,38 @@ def build_application(config: AppConfig) -> Application:
         fallbacks=[CommandHandler("cancel", edit_cancel)],
     )
 
+    # /remind is a ConversationHandler because `/remind schedule` opens a guided
+    # form. Every other /remind action returns END immediately from remind_command,
+    # so they behave exactly like a plain CommandHandler.
+    remind_flow = ConversationHandler(
+        entry_points=[CommandHandler(["remind", "reminder"], remind_command)],
+        states={
+            REMIND_SCHEDULE_MODE: [
+                CallbackQueryHandler(
+                    remind_schedule_mode_callback,
+                    pattern=rf"^{REMIND_SCHEDULE_MODE_CALLBACK_PREFIX}",
+                )
+            ],
+            REMIND_SCHEDULE_TIME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, remind_schedule_time)
+            ],
+            REMIND_SCHEDULE_REVIEW: [
+                CallbackQueryHandler(
+                    remind_schedule_review_callback,
+                    pattern=rf"^{REMIND_SCHEDULE_REVIEW_CALLBACK_PREFIX}",
+                )
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", remind_schedule_cancel)],
+    )
+
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("register", register_command))
     app.add_handler(CommandHandler("hi", help_command))
     app.add_handler(CommandHandler("ask", ask_command))
     app.add_handler(log_flow)
     app.add_handler(edit_flow)
-    app.add_handler(CommandHandler(["remind", "reminder"], remind_command))
+    app.add_handler(remind_flow)
     app.add_handler(CommandHandler(["reviewed", "done"], reviewed_command))
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("pattern", pattern_command))
