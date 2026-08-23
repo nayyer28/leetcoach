@@ -218,6 +218,46 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(int(row["reminders_paused"]), 1)
                 self.assertIsNone(row["reminder_hour_local"])
 
+    async def test_remind_schedule_start_then_edit_to_stop_keeps_hour_null(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            _insert_user(db_path)  # reminder_hour_local stays NULL
+
+            context = _context(db_path=db_path, args=["schedule"])
+            await remind_command(_update(), context)
+
+            # Start, pick an hour...
+            await remind_schedule_mode_callback(
+                _callback_update("remind:mode:start"), context
+            )
+            hour_update = _update()
+            hour_update.message.text = "13"
+            await remind_schedule_time(hour_update, context)
+
+            # ...then change your mind via Edit and choose Stop instead.
+            await remind_schedule_review_callback(
+                _callback_update("remind:review:edit"), context
+            )
+            await remind_schedule_mode_callback(
+                _callback_update("remind:mode:stop"), context
+            )
+            await remind_schedule_review_callback(
+                _callback_update("remind:review:save"), context
+            )
+
+            # The abandoned hour must not be written as an override.
+            with get_connection(db_path) as conn:
+                row = conn.execute(
+                    """
+                    SELECT reminders_paused, reminder_hour_local
+                    FROM users WHERE telegram_user_id = ?
+                    """,
+                    ("u-1",),
+                ).fetchone()
+                self.assertEqual(int(row["reminders_paused"]), 1)
+                self.assertIsNone(row["reminder_hour_local"])
+
     async def test_remind_schedule_refuses_to_open_during_log_flow(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "leetcoach-test.db")
