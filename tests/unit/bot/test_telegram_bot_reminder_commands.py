@@ -10,7 +10,15 @@ from leetcoach.app.infrastructure.config.app_config import AppConfig
 from leetcoach.app.infrastructure.config.db import get_connection
 from leetcoach.app.misc.migrate import migrate_database
 from leetcoach.app.application.problems.log_problem import LogProblemInput, log_problem
-from leetcoach.app.interface.bot.handlers import remind_command
+from leetcoach.app.interface.bot.handlers import (
+    REMIND_SCHEDULE_MODE,
+    REMIND_SCHEDULE_REVIEW,
+    REMIND_SCHEDULE_TIME,
+    remind_command,
+    remind_schedule_mode_callback,
+    remind_schedule_review_callback,
+    remind_schedule_time,
+)
 
 
 def _context(*, db_path: str, args: list[str]) -> SimpleNamespace:
@@ -37,6 +45,21 @@ def _update() -> SimpleNamespace:
     return SimpleNamespace(
         message=SimpleNamespace(reply_text=AsyncMock()),
         effective_user=SimpleNamespace(id="u-1"),
+        callback_query=None,
+    )
+
+
+def _callback_update(data: str) -> SimpleNamespace:
+    """An update carrying an inline-button press, as the schedule flow sees it."""
+    return SimpleNamespace(
+        message=None,
+        effective_user=SimpleNamespace(id="u-1"),
+        callback_query=SimpleNamespace(
+            data=data,
+            answer=AsyncMock(),
+            edit_message_reply_markup=AsyncMock(),
+            message=SimpleNamespace(reply_text=AsyncMock()),
+        ),
     )
 
 
@@ -94,27 +117,122 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
             text = update.message.reply_text.await_args.args[0]
             self.assertIn("<b>Reminder hour:</b> 11:00", text)
 
-    async def test_remind_time_updates_setting(self) -> None:
+    async def test_remind_schedule_start_flow_saves_hour_and_resumes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            _insert_user(db_path, reminders_paused=1)
+
+            context = _context(db_path=db_path, args=["schedule"])
+
+            entry = _update()
+            state = await remind_command(entry, context)
+            self.assertEqual(state, REMIND_SCHEDULE_MODE)
+
+            mode = _callback_update("remind:mode:start")
+            state = await remind_schedule_mode_callback(mode, context)
+            self.assertEqual(state, REMIND_SCHEDULE_TIME)
+
+            time_update = _update()
+            time_update.message.text = "13"
+            state = await remind_schedule_time(time_update, context)
+            self.assertEqual(state, REMIND_SCHEDULE_REVIEW)
+
+            # The draft is shown before anything is written.
+            draft_text = time_update.message.reply_text.await_args.args[0]
+            self.assertIn("Review Reminder Schedule", draft_text)
+            self.assertIn("stopped", draft_text)
+            self.assertIn("13:00", draft_text)
+            with get_connection(db_path) as conn:
+                row = conn.execute(
+                    "SELECT reminders_paused FROM users WHERE telegram_user_id = ?",
+                    ("u-1",),
+                ).fetchone()
+                self.assertEqual(int(row["reminders_paused"]), 1)
+
+            save = _callback_update("remind:review:save")
+            await remind_schedule_review_callback(save, context)
+
+            with get_connection(db_path) as conn:
+                row = conn.execute(
+                    """
+                    SELECT reminders_paused, reminder_hour_local
+                    FROM users WHERE telegram_user_id = ?
+                    """,
+                    ("u-1",),
+                ).fetchone()
+                self.assertEqual(int(row["reminders_paused"]), 0)
+                self.assertEqual(int(row["reminder_hour_local"]), 13)
+
+    async def test_remind_schedule_stop_flow_pauses_without_asking_time(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "leetcoach-test.db")
             migrate_database(db_path)
             _insert_user(db_path)
 
-            update = _update()
-            context = _context(db_path=db_path, args=["time", "13"])
+            context = _context(db_path=db_path, args=["schedule"])
+            await remind_command(_update(), context)
 
-            await remind_command(update, context)
+            mode = _callback_update("remind:mode:stop")
+            state = await remind_schedule_mode_callback(mode, context)
+            # Stopping skips the time question and goes straight to the draft.
+            self.assertEqual(state, REMIND_SCHEDULE_REVIEW)
+
+            save = _callback_update("remind:review:save")
+            await remind_schedule_review_callback(save, context)
+
+            with get_connection(db_path) as conn:
+                row = conn.execute(
+                    "SELECT reminders_paused FROM users WHERE telegram_user_id = ?",
+                    ("u-1",),
+                ).fetchone()
+                self.assertEqual(int(row["reminders_paused"]), 1)
+
+    async def test_remind_schedule_cancel_writes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            _insert_user(db_path)
+
+            context = _context(db_path=db_path, args=["schedule"])
+            await remind_command(_update(), context)
+
+            mode = _callback_update("remind:mode:stop")
+            await remind_schedule_mode_callback(mode, context)
+
+            cancel = _callback_update("remind:review:cancel")
+            await remind_schedule_review_callback(cancel, context)
 
             self.assertIn(
-                "Updated reminder hour to 13:00",
-                update.message.reply_text.await_args.args[0],
+                "unchanged",
+                cancel.callback_query.message.reply_text.await_args.args[0],
             )
             with get_connection(db_path) as conn:
                 row = conn.execute(
-                    "SELECT reminder_hour_local FROM users WHERE telegram_user_id = ?",
+                    "SELECT reminders_paused FROM users WHERE telegram_user_id = ?",
                     ("u-1",),
                 ).fetchone()
-                self.assertEqual(int(row["reminder_hour_local"]), 13)
+                self.assertEqual(int(row["reminders_paused"]), 0)
+
+    async def test_remind_schedule_rejects_out_of_range_hour(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            _insert_user(db_path)
+
+            context = _context(db_path=db_path, args=["schedule"])
+            await remind_command(_update(), context)
+            await remind_schedule_mode_callback(
+                _callback_update("remind:mode:start"), context
+            )
+
+            for bad in ("99", "not-a-number"):
+                update = _update()
+                update.message.text = bad
+                state = await remind_schedule_time(update, context)
+                # Stays on the question rather than advancing to the draft.
+                self.assertEqual(state, REMIND_SCHEDULE_TIME)
+                self.assertIn("⚠️", update.message.reply_text.await_args.args[0])
 
     async def test_remind_new_sends_top_of_queue_without_bumping_review_count(
         self,
@@ -182,65 +300,28 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
             text = update.message.reply_text.await_args.args[0]
             self.assertIn("empty", text.lower())
 
-    async def test_remind_stop_pauses_reminders(self) -> None:
+    async def test_remind_unknown_action_shows_usage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "leetcoach-test.db")
             migrate_database(db_path)
             _insert_user(db_path)
 
             update = _update()
+            # "stop" was a top-level action before; it now lives inside
+            # /remind schedule, so it should fall through to usage help.
             context = _context(db_path=db_path, args=["stop"])
 
             await remind_command(update, context)
 
             text = update.message.reply_text.await_args.args[0]
-            self.assertIn("Stopped scheduled reminders", text)
-            with get_connection(db_path) as conn:
-                row = conn.execute(
-                    "SELECT reminders_paused FROM users WHERE telegram_user_id = ?",
-                    ("u-1",),
-                ).fetchone()
-                self.assertEqual(int(row["reminders_paused"]), 1)
-
-    async def test_remind_start_resumes_reminders(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = str(Path(tmp) / "leetcoach-test.db")
-            migrate_database(db_path)
-            _insert_user(db_path, reminders_paused=1)
-
-            update = _update()
-            context = _context(db_path=db_path, args=["start"])
-
-            await remind_command(update, context)
-
-            text = update.message.reply_text.await_args.args[0]
-            self.assertIn("Resumed scheduled reminders", text)
+            self.assertIn("/remind now", text)
+            self.assertIn("/remind schedule", text)
             with get_connection(db_path) as conn:
                 row = conn.execute(
                     "SELECT reminders_paused FROM users WHERE telegram_user_id = ?",
                     ("u-1",),
                 ).fetchone()
                 self.assertEqual(int(row["reminders_paused"]), 0)
-
-    async def test_remind_stop_is_idempotent(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = str(Path(tmp) / "leetcoach-test.db")
-            migrate_database(db_path)
-            _insert_user(db_path, reminders_paused=1)
-
-            update = _update()
-            context = _context(db_path=db_path, args=["stop"])
-
-            await remind_command(update, context)
-
-            text = update.message.reply_text.await_args.args[0]
-            self.assertIn("already stopped", text)
-            with get_connection(db_path) as conn:
-                row = conn.execute(
-                    "SELECT reminders_paused FROM users WHERE telegram_user_id = ?",
-                    ("u-1",),
-                ).fetchone()
-                self.assertEqual(int(row["reminders_paused"]), 1)
 
     async def test_remind_settings_shows_paused_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -255,7 +336,7 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
 
             text = update.message.reply_text.await_args.args[0]
             self.assertIn("paused", text)
-            self.assertIn("/remind start", text)
+            self.assertIn("/remind schedule", text)
 
     async def test_remind_new_still_works_while_paused(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
