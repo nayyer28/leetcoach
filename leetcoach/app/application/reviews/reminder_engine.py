@@ -14,7 +14,6 @@ from leetcoach.app.infrastructure.config.app_config import AppConfig
 from leetcoach.app.infrastructure.config.db import get_connection
 from leetcoach.app.infrastructure.dao.review_queue_dao import (
     list_next_review_candidates_for_scheduler,
-    mark_reviewed,
 )
 from leetcoach.app.infrastructure.dao.users_dao import mark_user_reminded
 
@@ -36,7 +35,6 @@ class ReminderCandidate:
     neetcode_slug: str | None
     telegram_chat_id: str
     timezone: str
-    reminder_daily_max: int | None
     reminder_hour_local: int | None
     last_reminded_at: str | None
 
@@ -139,9 +137,6 @@ def row_to_candidate(row: sqlite3.Row) -> ReminderCandidate:
         neetcode_slug=(str(row["neetcode_slug"]) if row["neetcode_slug"] else None),
         telegram_chat_id=str(row["telegram_chat_id"]),
         timezone=str(row["timezone"]),
-        reminder_daily_max=(
-            int(row["reminder_daily_max"]) if row["reminder_daily_max"] is not None else None
-        ),
         reminder_hour_local=(
             int(row["reminder_hour_local"])
             if row["reminder_hour_local"] is not None
@@ -175,10 +170,6 @@ def scheduler_preflight(config: AppConfig) -> SchedulerPreflightResult:
     if not (0 <= config.reminder_hour_local <= 23):
         issues.append(
             f"LEETCOACH_REMINDER_HOUR_LOCAL out of range: {config.reminder_hour_local}"
-        )
-    if config.reminder_daily_max < 1:
-        issues.append(
-            f"LEETCOACH_REMINDER_DAILY_MAX must be >= 1 (got {config.reminder_daily_max})"
         )
 
     try:
@@ -276,23 +267,15 @@ def run_scheduler_once(
                 )
                 continue
 
-            # Scheduler-sent reminder counts as a review: bump the bucket. Also stamp
-            # users.last_reminded_at so we don't double-send today.
-            marked = mark_reviewed(
-                conn,
-                user_id=candidate.user_id,
-                user_problem_id=candidate.user_problem_id,
-                reviewed_at=now,
-            )
+            # Reminder is a display-only nudge: stamp users.last_reminded_at for
+            # daily de-dupe, but do NOT bump review_count. review_count only
+            # advances when the user explicitly runs /reviewed <id>.
             mark_user_reminded(conn, user_id=candidate.user_id, now_iso=now)
-            if marked:
-                sent += 1
-                if progress:
-                    progress(
-                        f"[scheduler] sent user_problem_id={candidate.user_problem_id}"
-                    )
-            else:
-                failed += 1
+            sent += 1
+            if progress:
+                progress(
+                    f"[scheduler] sent user_problem_id={candidate.user_problem_id}"
+                )
 
         conn.commit()
     LOGGER.info(

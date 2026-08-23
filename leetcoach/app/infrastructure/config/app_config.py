@@ -14,7 +14,6 @@ class AppConfig:
     allowed_user_ids: frozenset[str]
     gemini_api_key: str | None = None
     reminder_hour_local: int = 8
-    reminder_daily_max: int = 2
 
 
 def _parse_allowed_user_ids() -> frozenset[str]:
@@ -43,5 +42,4 @@ def load_config() -> AppConfig:
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
         allowed_user_ids=_parse_allowed_user_ids(),
         reminder_hour_local=max(0, min(23, _parse_int_env("LEETCOACH_REMINDER_HOUR_LOCAL", 8))),
-        reminder_daily_max=max(1, _parse_int_env("LEETCOACH_REMINDER_DAILY_MAX", 2)),
     )

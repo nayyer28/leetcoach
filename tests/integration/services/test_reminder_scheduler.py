@@ -24,7 +24,6 @@ def _cfg(db_path: Path, *, hour: int = 9) -> AppConfig:
         telegram_bot_token="123:token",
         allowed_user_ids=frozenset(),
         reminder_hour_local=hour,
-        reminder_daily_max=2,
     )
 
 
@@ -48,7 +47,7 @@ def _log(db_path: Path, *, user: str, chat: str, title: str, slug: str, solved_a
 
 class ReminderSchedulerIntegrationTest(unittest.TestCase):
     @patch("leetcoach.app.application.reviews.reminder_engine._send_telegram_message")
-    def test_run_once_sends_and_bumps_review_count_and_dedupes_same_day(
+    def test_run_once_sends_without_bumping_review_count_and_dedupes_same_day(
         self, mock_send
     ) -> None:
         mock_send.return_value = (True, "ok")
@@ -67,6 +66,13 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             cfg = _cfg(db_path)
             now_iso = "2026-02-10T09:00:00+00:00"
 
+            with get_connection(str(db_path)) as conn:
+                entered_at_before = str(
+                    conn.execute("SELECT entered_at FROM user_problems").fetchone()[
+                        "entered_at"
+                    ]
+                )
+
             first = run_scheduler_once(config=cfg, now_iso=now_iso)
             self.assertEqual(first.sent, 1)
             self.assertEqual(first.failed, 0)
@@ -75,13 +81,15 @@ class ReminderSchedulerIntegrationTest(unittest.TestCase):
             first_message_text = mock_send.call_args_list[0].args[2]
             self.assertIn("LeetCoach Reminder", first_message_text)
 
-            # After send: bucket bumped to 1, entered_at reset, user stamp set.
+            # A reminder is display-only: queue position is untouched (review_count
+            # and entered_at unchanged) and only the user's de-dupe stamp moves.
+            # review_count advances solely via /reviewed <id>.
             with get_connection(str(db_path)) as conn:
                 up_row = conn.execute(
                     "SELECT review_count, entered_at FROM user_problems"
                 ).fetchone()
-                self.assertEqual(int(up_row["review_count"]), 1)
-                self.assertEqual(str(up_row["entered_at"]), now_iso)
+                self.assertEqual(int(up_row["review_count"]), 0)
+                self.assertEqual(str(up_row["entered_at"]), entered_at_before)
                 user_row = conn.execute(
                     "SELECT last_reminded_at FROM users WHERE telegram_user_id = ?",
                     ("u-1",),

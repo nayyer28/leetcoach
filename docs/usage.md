@@ -29,7 +29,6 @@ Minimum useful values:
 LEETCOACH_TELEGRAM_BOT_TOKEN=<your-token>
 LEETCOACH_ALLOWED_USER_IDS=<telegram_user_id_1>,<telegram_user_id_2>
 LEETCOACH_REMINDER_HOUR_LOCAL=8
-LEETCOACH_REMINDER_DAILY_MAX=2
 GEMINI_API_KEY=<your-gemini-api-key>
 LEETCOACH_DB_PATH=/data/leetcoach.db
 ```
@@ -77,8 +76,8 @@ Current Telegram surface:
 - `/start`, `/register`, `/hi`
 - `/log`, `/log show [n]`
 - `/ask <question>`
-- `/due`, `/reviewed P1`
-- `/remind`, `/remind last`, `/remind new`, `/remind count <n>`, `/remind time <hour>`
+- `/reviewed P1`
+- `/remind`, `/remind new`, `/remind stop`, `/remind start`, `/remind time <hour>`
 - `/list`, `/pattern <text>`, `/search <text>`
 - `/show P1`, `/edit P1`
 - `/quiz`, `/quiz <topic>`, `/reveal`
@@ -143,18 +142,19 @@ Use this path when you want to inspect:
 
 Reminder behavior today:
 - reminders are sent by the scheduler, not by an inbound Telegram command
-- the scheduler respects the configured local reminder hour
-- the scheduler respects user-specific daily max overrides when present
-- reminded problems stay at the front until you mark them reviewed
-- once marked reviewed, the problem moves to the back of the queue
+- the scheduler respects the configured local reminder hour, and user overrides when present
+- exactly one problem per user per local day — the top of that user's review queue
+- a reminder is display-only: it never advances the queue
+- the problem stays at the front until you mark it reviewed
+- once marked reviewed, `review_count` bumps and the problem moves to the back of the queue
 - the scheduler no longer sends a separate daily header message before reminder entries
 
 Reminder-related commands:
-- `/due` shows outstanding reminded items
-- `/reviewed P1` marks one due item reviewed
+- `/reviewed P1` marks one problem reviewed (the only thing that advances the queue)
 - `/remind` shows your effective reminder settings
-- `/remind last` shows the last reminder batch
-- `/remind new` sends one extra candidate immediately
+- `/remind new` shows the top of your queue immediately
+- `/remind stop` / `/remind start` pause and resume scheduled reminders
+- `/remind time <hour>` sets your local reminder hour
 
 ## 8. Logging And Editing UX
 
@@ -167,7 +167,7 @@ Current problem-entry UX:
 Stable problem IDs:
 - user-facing problem references are deterministic per user
 - examples: `P1`, `P2`, `P3`
-- these IDs are used by `/show`, `/edit`, `/reviewed`, `/due`, `/list`, and `/ask`
+- these IDs are used by `/show`, `/edit`, `/reviewed`, `/list`, and `/ask`
 
 ## 9. Notion Import
 

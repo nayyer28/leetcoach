@@ -27,7 +27,6 @@ def _context(*, db_path: str, args: list[str]) -> SimpleNamespace:
                     telegram_bot_token="token",
                     allowed_user_ids=frozenset(),
                     reminder_hour_local=9,
-                    reminder_daily_max=2,
                 )
             }
         ),
@@ -71,15 +70,14 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
                 conn.execute(
                     """
                     INSERT INTO users (
-                        telegram_user_id, telegram_chat_id, timezone, reminder_daily_max,
+                        telegram_user_id, telegram_chat_id, timezone,
                         reminder_hour_local, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (
                         "u-1",
                         "chat-1",
                         "UTC",
-                        3,
                         11,
                         "2026-03-16T10:00:00+00:00",
                         "2026-03-16T10:00:00+00:00",
@@ -94,30 +92,7 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
 
             update.message.reply_text.assert_awaited_once()
             text = update.message.reply_text.await_args.args[0]
-            self.assertIn("<b>Daily reminder count:</b> 3", text)
             self.assertIn("<b>Reminder hour:</b> 11:00", text)
-
-    async def test_remind_count_updates_setting(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = str(Path(tmp) / "leetcoach-test.db")
-            migrate_database(db_path)
-            _insert_user(db_path)
-
-            update = _update()
-            context = _context(db_path=db_path, args=["count", "4"])
-
-            await remind_command(update, context)
-
-            self.assertIn(
-                "Updated daily reminder count to 4",
-                update.message.reply_text.await_args.args[0],
-            )
-            with get_connection(db_path) as conn:
-                row = conn.execute(
-                    "SELECT reminder_daily_max FROM users WHERE telegram_user_id = ?",
-                    ("u-1",),
-                ).fetchone()
-                self.assertEqual(int(row["reminder_daily_max"]), 4)
 
     async def test_remind_time_updates_setting(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -141,7 +116,9 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
                 ).fetchone()
                 self.assertEqual(int(row["reminder_hour_local"]), 13)
 
-    async def test_remind_new_sends_top_of_queue_and_marks_reviewed(self) -> None:
+    async def test_remind_new_sends_top_of_queue_without_bumping_review_count(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "leetcoach-test.db")
             migrate_database(db_path)
@@ -171,14 +148,14 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("ID: P1", text)
             self.assertIn("Two Sum", text)
 
-            # Manual /remind new goes through the same "mark reviewed" path
-            # as a scheduler-driven reminder: bumps review_count and stamps
-            # last_reminded_at on the user.
+            # Manual /remind new is display-only: it stamps last_reminded_at for
+            # daily de-dupe but leaves review_count alone. Only /reviewed <id>
+            # advances the queue.
             with get_connection(db_path) as conn:
                 up_row = conn.execute(
                     "SELECT review_count FROM user_problems"
                 ).fetchone()
-                self.assertEqual(int(up_row["review_count"]), 1)
+                self.assertEqual(int(up_row["review_count"]), 0)
                 user_row = conn.execute(
                     "SELECT last_reminded_at FROM users WHERE telegram_user_id = ?",
                     ("u-1",),
