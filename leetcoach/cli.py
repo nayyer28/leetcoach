@@ -194,7 +194,6 @@ def scheduler_doctor_command() -> None:
     click.echo("LeetCoach Scheduler Doctor")
     click.echo(f"- db_path: {config.db_path}")
     click.echo(f"- reminder_hour_local: {config.reminder_hour_local}")
-    click.echo(f"- reminder_daily_max: {config.reminder_daily_max}")
     click.echo(f"- telegram_token: {_mask_token(config.telegram_bot_token)}")
 
     result = scheduler_preflight(config)

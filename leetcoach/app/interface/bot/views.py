@@ -133,7 +133,6 @@ def commands_help_text() -> str:
         "• /remind new\n"
         "• /remind stop\n"
         "• /remind start\n"
-        "• /remind count &lt;n&gt;\n"
         "• /remind time &lt;hour&gt;\n\n"
         "📚 <b>Browse</b>\n"
         "• /list\n"
@@ -311,8 +310,6 @@ def extract_problem_slug(raw_value: str, *, provider: str) -> str | None:
 
 def render_remind_settings(
     *,
-    custom_count: int | None,
-    effective_count: int,
     custom_hour: int | None,
     effective_hour: int,
     reminders_paused: bool = False,
@@ -325,13 +322,7 @@ def render_remind_settings(
                 if reminders_paused
                 else f"{_bold('Status:')} ▶️ active"
             ),
-            f"{_bold('Daily reminder count:')} {effective_count}",
             f"{_bold('Reminder hour:')} {effective_hour:02d}:00",
-            (
-                f"{_bold('Count source:')} app default"
-                if custom_count is None
-                else f"{_bold('Count source:')} your custom setting"
-            ),
             (
                 f"{_bold('Hour source:')} app default"
                 if custom_hour is None
@@ -340,7 +331,7 @@ def render_remind_settings(
             "",
             (
                 f"{_bold('Commands:')} /remind new, /remind stop, "
-                f"/remind start, /remind count &lt;n&gt;, /remind time &lt;hour&gt;"
+                f"/remind start, /remind time &lt;hour&gt;"
             ),
         ]
     )
@@ -371,7 +362,6 @@ def remind_usage_text() -> str:
         "/remind new\n"
         "/remind stop\n"
         "/remind start\n"
-        "/remind count <n>\n"
         "/remind time <hour>"
     )
 

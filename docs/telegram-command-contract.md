@@ -14,14 +14,11 @@ Important boundary:
 - `/log`
 - `/log show [n]`
 - `/ask <question>`
-- `/due`
 - `/reviewed P1`
 - `/remind`
-- `/remind last`
 - `/remind new`
 - `/remind stop`
 - `/remind start`
-- `/remind count <n>`
 - `/remind time <hour>`
 - `/list`
 - `/pattern <text>`
@@ -108,7 +105,6 @@ These IDs are used by:
 - `/show`
 - `/edit`
 - `/reviewed`
-- `/due`
 - `/list`
 - `/search`
 - `/pattern`
@@ -180,10 +176,6 @@ Current search behavior includes fields such as:
 
 ## Review Commands
 
-### `/due`
-- shows reminded-but-not-yet-reviewed problems
-- uses stable problem IDs like `P1`
-
 ### `/reviewed P1`
 - marks the problem reviewed
 - increments review count
@@ -195,17 +187,12 @@ Current search behavior includes fields such as:
 ### `/remind`
 - shows effective reminder settings for the current user
 
-### `/remind count <n>`
-- sets a user-specific daily reminder max
-
 ### `/remind time <hour>`
 - sets a user-specific reminder hour
 
-### `/remind last`
-- shows the most recent reminder batch sent to the user
-
 ### `/remind new`
-- sends one extra review candidate immediately
+- shows the top of the user's review queue immediately
+- display-only: stamps the daily de-dupe timestamp, does not advance the queue
 
 ### `/remind stop`
 - stops the scheduler from sending new reminders to this user

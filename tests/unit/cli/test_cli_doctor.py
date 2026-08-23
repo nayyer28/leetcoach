@@ -65,7 +65,6 @@ class MainDoctorUnitTest(unittest.TestCase):
                 "LEETCOACH_DB_PATH": str(db_path),
                 "LEETCOACH_TELEGRAM_BOT_TOKEN": "123:token",
                 "LEETCOACH_REMINDER_HOUR_LOCAL": "8",
-                "LEETCOACH_REMINDER_DAILY_MAX": "2",
             }
             runner = CliRunner()
             with patch.dict("os.environ", env, clear=False):
@@ -81,7 +80,6 @@ class MainDoctorUnitTest(unittest.TestCase):
                 "LEETCOACH_DB_PATH": str(db_path),
                 "LEETCOACH_TELEGRAM_BOT_TOKEN": "123:token",
                 "LEETCOACH_REMINDER_HOUR_LOCAL": "8",
-                "LEETCOACH_REMINDER_DAILY_MAX": "2",
             }
             runner = CliRunner()
             with patch.dict("os.environ", env, clear=False):

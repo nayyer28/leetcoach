@@ -22,7 +22,6 @@ def peek_next_review_candidate_for_user(
             up.entered_at,
             u.telegram_chat_id,
             u.timezone,
-            u.reminder_daily_max,
             u.reminder_hour_local,
             u.last_reminded_at
         FROM user_problems up
@@ -55,7 +54,6 @@ def list_next_review_candidates_for_scheduler(
             up.entered_at,
             u.telegram_chat_id,
             u.timezone,
-            u.reminder_daily_max,
             u.reminder_hour_local,
             u.last_reminded_at
         FROM user_problems up

@@ -36,7 +36,6 @@ def _candidate(
         neetcode_slug="x",
         telegram_chat_id="chat-1",
         timezone=timezone,
-        reminder_daily_max=None,
         reminder_hour_local=None,
         last_reminded_at=last_reminded_at,
     )
@@ -101,7 +100,6 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
                 telegram_bot_token=None,
                 allowed_user_ids=frozenset(),
                 reminder_hour_local=8,
-                reminder_daily_max=2,
             )
             result = scheduler_preflight(cfg)
             self.assertFalse(result.ok)
@@ -123,7 +121,6 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
                 telegram_bot_token="123:token",
                 allowed_user_ids=frozenset(),
                 reminder_hour_local=8,
-                reminder_daily_max=2,
             )
             result = scheduler_preflight(cfg)
             self.assertFalse(result.ok)
@@ -141,7 +138,6 @@ class ReminderSchedulerUnitTest(unittest.TestCase):
                 telegram_bot_token="123:token",
                 allowed_user_ids=frozenset(),
                 reminder_hour_local=8,
-                reminder_daily_max=2,
             )
             result = scheduler_preflight(cfg)
             self.assertTrue(result.ok)

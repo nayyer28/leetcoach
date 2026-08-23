@@ -55,14 +55,12 @@ from leetcoach.app.application.reviews.reminder_engine import (
 from leetcoach.app.infrastructure.config.app_config import AppConfig
 from leetcoach.app.infrastructure.config.db import get_connection
 from leetcoach.app.infrastructure.dao.review_queue_dao import (
-    mark_reviewed,
     peek_next_review_candidate_for_user,
 )
 from leetcoach.app.infrastructure.dao.users_dao import (
     get_user_id_by_telegram_user_id,
     get_user_reminder_preferences,
     mark_user_reminded,
-    set_user_reminder_daily_max,
     set_user_reminder_hour_local,
     set_user_reminders_paused,
     upsert_user,
@@ -898,11 +896,6 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
 
         user_id = int(prefs["id"])
-        custom_count = (
-            int(prefs["reminder_daily_max"])
-            if prefs["reminder_daily_max"] is not None
-            else None
-        )
         custom_hour = (
             int(prefs["reminder_hour_local"])
             if prefs["reminder_hour_local"] is not None
@@ -913,8 +906,6 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if not context.args:
             await update.message.reply_text(
                 _render_remind_settings(
-                    custom_count=custom_count,
-                    effective_count=custom_count or cfg.reminder_daily_max,
                     custom_hour=custom_hour,
                     effective_hour=(
                         custom_hour
@@ -963,35 +954,6 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
             return
 
-        if action == "count":
-            if len(context.args) != 2:
-                await update.message.reply_text("Usage: /remind count <n>")
-                return
-            try:
-                value = int(context.args[1])
-            except ValueError:
-                await update.message.reply_text("⚠️ Reminder count must be a number.")
-                return
-            if value < 1 or value > 10:
-                await update.message.reply_text(
-                    "⚠️ Reminder count must be between 1 and 10."
-                )
-                return
-            updated = set_user_reminder_daily_max(
-                conn,
-                telegram_user_id=telegram_user_id,
-                reminder_daily_max=value,
-                now_iso=now_iso,
-            )
-            if not updated:
-                await update.message.reply_text("⚠️ Please run /start first.")
-                return
-            conn.commit()
-            await update.message.reply_text(
-                f"✅ Updated daily reminder count to {value}. Use /remind to check."
-            )
-            return
-
         if action == "time":
             if len(context.args) != 2:
                 await update.message.reply_text("Usage: /remind time <hour>")
@@ -1035,24 +997,14 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await _reply_long_text(
                 update, "🔁 Manual Reminder\n\n" + build_reminder_message(candidate)
             )
-            mark_reviewed(
-                conn,
-                user_id=user_id,
-                user_problem_id=candidate.user_problem_id,
-                reviewed_at=now_iso,
-            )
+            # Manual reminder is display-only: stamp last_reminded_at so the
+            # scheduler skips this user today, but do NOT bump review_count.
+            # review_count only advances via /reviewed <id>.
             mark_user_reminded(conn, user_id=user_id, now_iso=now_iso)
             conn.commit()
             return
 
     await update.message.reply_text(_remind_usage_text())
-
-
-async def reminder_count_alias_command(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
-    context.args = ["count", *context.args]
-    await remind_command(update, context)
 
 
 async def reviewed_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1580,9 +1532,6 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(log_flow)
     app.add_handler(edit_flow)
     app.add_handler(CommandHandler(["remind", "reminder"], remind_command))
-    app.add_handler(
-        CommandHandler(["reminder_count", "remindercount"], reminder_count_alias_command)
-    )
     app.add_handler(CommandHandler(["reviewed", "done"], reviewed_command))
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("pattern", pattern_command))

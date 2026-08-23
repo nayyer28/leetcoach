@@ -171,7 +171,7 @@ Queue rules:
 Reminder policy:
 - scheduler scans available queue entries in ascending `queue_position`
 - scheduler sends only at configured local hour (`LEETCOACH_REMINDER_HOUR_LOCAL`, default `8`)
-- scheduler sends up to configured daily max (`LEETCOACH_REMINDER_DAILY_MAX`, default `2`) per user/day
+- scheduler sends exactly one problem per user per local day — there is no configurable cap
 - scheduler sends a daily demarcation/header message before reminder entries
 - scheduler uses `last_review_requested_at` to prevent duplicates in the same local user day
 
