@@ -119,7 +119,7 @@ def build_reminder_message(candidate: ReminderCandidate) -> str:
     nc = _neetcode_url(candidate.neetcode_slug)
     if nc:
         lines.append(f"🔗 NC: {nc}")
-    lines.append("Use /reviewed <id>")
+    lines.append(f"Use /reviewed {candidate.problem_ref} when done.")
     return "\n".join(lines)
 
 

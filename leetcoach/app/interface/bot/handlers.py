@@ -994,7 +994,10 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 )
                 return
             candidate = row_to_candidate(row)
-            await _reply_long_text(
+            # build_reminder_message is plain text (the scheduler sends it with no
+            # parse_mode). Send it the same way here — routing it through the HTML
+            # reply helper would trip on any '<' in the body or the problem title.
+            await _reply_long_text_plain(
                 update, "🔁 Manual Reminder\n\n" + build_reminder_message(candidate)
             )
             # Manual reminder is display-only: stamp last_reminded_at so the
@@ -1108,6 +1111,11 @@ async def reveal_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def _reply_long_text(update: Update, text: str) -> None:
     for chunk in _chunk_text(text):
         await update.message.reply_text(chunk, parse_mode=ParseMode.HTML)
+
+
+async def _reply_long_text_plain(update: Update, text: str) -> None:
+    for chunk in _chunk_text(text):
+        await update.message.reply_text(chunk)
 
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
