@@ -957,8 +957,10 @@ async def remind_schedule_mode_callback(
         return ConversationHandler.END
     if action == "stop":
         draft["new_paused"] = True
-        # Stopping says nothing about the hour, so leave hour_explicit False and
-        # keep showing whatever is in effect today.
+        # Stopping says nothing about the hour. Clear hour_explicit rather than
+        # just leaving it — Start, type an hour, Edit, Stop would otherwise carry
+        # the earlier entry through and write the override anyway.
+        draft["hour_explicit"] = False
         draft["new_hour"] = draft["current_hour"]
         return await _show_remind_schedule_review(query.message, context)
     draft["new_paused"] = False
