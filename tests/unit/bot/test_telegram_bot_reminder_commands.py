@@ -6,6 +6,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from telegram.ext import ConversationHandler
+
 from leetcoach.app.infrastructure.config.app_config import AppConfig
 from leetcoach.app.infrastructure.config.db import get_connection
 from leetcoach.app.misc.migrate import migrate_database
@@ -187,6 +189,54 @@ class TelegramBotReminderCommandsUnitTest(unittest.IsolatedAsyncioTestCase):
                     ("u-1",),
                 ).fetchone()
                 self.assertEqual(int(row["reminders_paused"]), 1)
+
+    async def test_remind_schedule_stop_keeps_inherited_hour_null(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            _insert_user(db_path)  # reminder_hour_local stays NULL
+
+            context = _context(db_path=db_path, args=["schedule"])
+            await remind_command(_update(), context)
+            await remind_schedule_mode_callback(
+                _callback_update("remind:mode:stop"), context
+            )
+            await remind_schedule_review_callback(
+                _callback_update("remind:review:save"), context
+            )
+
+            # Stopping says nothing about the hour. Writing the effective hour here
+            # would freeze the app default into a per-user override.
+            with get_connection(db_path) as conn:
+                row = conn.execute(
+                    """
+                    SELECT reminders_paused, reminder_hour_local
+                    FROM users WHERE telegram_user_id = ?
+                    """,
+                    ("u-1",),
+                ).fetchone()
+                self.assertEqual(int(row["reminders_paused"]), 1)
+                self.assertIsNone(row["reminder_hour_local"])
+
+    async def test_remind_schedule_refuses_to_open_during_log_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "leetcoach-test.db")
+            migrate_database(db_path)
+            _insert_user(db_path)
+
+            update = _update()
+            context = _context(db_path=db_path, args=["schedule"])
+            # A /log form is mid-flight, waiting on a text answer.
+            context.user_data["log_payload"] = {}
+
+            state = await remind_command(update, context)
+
+            # Otherwise the hour typed here would be eaten by log_flow as a title.
+            self.assertEqual(state, ConversationHandler.END)
+            self.assertNotIn("remind_schedule", context.user_data)
+            text = update.message.reply_text.await_args.args[0]
+            self.assertIn("/log", text)
+            self.assertIn("/cancel", text)
 
     async def test_remind_schedule_cancel_writes_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
