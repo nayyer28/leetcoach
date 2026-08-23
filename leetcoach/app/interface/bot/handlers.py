@@ -48,25 +48,20 @@ from leetcoach.app.application.quiz.interrupt_quiz import interrupt_active_quiz
 from leetcoach.app.application.quiz.reveal_quiz import reveal_quiz
 from leetcoach.app.application.quiz.start_quiz import start_quiz
 from leetcoach.app.application.reviews.complete_review import complete_review
-from leetcoach.app.application.reviews.due_reviews import (
-    DueReviewItem,
-    list_due_reviews,
-)
 from leetcoach.app.application.reviews.reminder_engine import (
     build_reminder_message,
     row_to_candidate,
-    select_candidates_for_batch,
 )
 from leetcoach.app.infrastructure.config.app_config import AppConfig
 from leetcoach.app.infrastructure.config.db import get_connection
 from leetcoach.app.infrastructure.dao.review_queue_dao import (
-    list_last_requested_batch_for_user,
-    list_next_review_candidates_for_user,
-    mark_review_requested,
+    mark_reviewed,
+    peek_next_review_candidate_for_user,
 )
 from leetcoach.app.infrastructure.dao.users_dao import (
     get_user_id_by_telegram_user_id,
     get_user_reminder_preferences,
+    mark_user_reminded,
     set_user_reminder_daily_max,
     set_user_reminder_hour_local,
     set_user_reminders_paused,
@@ -106,11 +101,10 @@ from leetcoach.app.interface.bot.views import (
     normalize_difficulty_input as _normalize_difficulty_input,
     normalize_solved_at as _normalize_solved_at,
     remind_usage_text as _remind_usage_text,
-    render_due as _render_due,
     render_edit_prompt as _render_edit_prompt,
     render_log_edit_prompt as _render_log_edit_prompt,
     render_log_review as _render_log_review,
-    render_last_batch as _render_last_batch_impl,
+    render_next_review as _render_next_review,
     render_problem_detail as _render_problem_detail,
     render_problem_rows as _render_problem_rows,
     render_quiz_feedback as _render_quiz_feedback,
@@ -889,21 +883,6 @@ async def log_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
-async def due_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    cfg = await _ensure_authorized(update, context)
-    if cfg is None:
-        return
-    _interrupt_quiz_if_needed(cfg, update, context)
-    telegram_user_id = _telegram_user_id(update)
-    items = list_due_reviews(cfg.db_path, telegram_user_id)
-    if not items:
-        await update.message.reply_text(
-            "✅ No outstanding reviews right now.\nUse /remind new or /list to keep going."
-        )
-        return
-    await _reply_long_text(update, _render_due(items, cfg.timezone))
-
-
 async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg = await _ensure_authorized(update, context)
     if cfg is None:
@@ -929,7 +908,6 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if prefs["reminder_hour_local"] is not None
             else None
         )
-        user_timezone = str(prefs["timezone"])
         reminders_paused = bool(prefs["reminders_paused"])
 
         if not context.args:
@@ -1043,46 +1021,28 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
             return
 
-        if action == "last":
-            if len(context.args) != 1:
-                await update.message.reply_text("Usage: /remind last")
-                return
-            batch = list_last_requested_batch_for_user(conn, user_id=user_id)
-            if not batch:
-                await update.message.reply_text("📭 No reminder batch has been sent yet.")
-                return
-            await _reply_long_text(
-                update, _render_last_batch_impl(batch, user_timezone, row_to_candidate)
-            )
-            return
-
         if action == "new":
             if len(context.args) != 1:
                 await update.message.reply_text("Usage: /remind new")
                 return
-            rows = list_next_review_candidates_for_user(conn, user_id=user_id)
-            selected = select_candidates_for_batch(
-                [row_to_candidate(row) for row in rows],
-                now_iso=now_iso,
-                daily_max=custom_count or cfg.reminder_daily_max,
-            )
-            if not selected:
+            row = peek_next_review_candidate_for_user(conn, user_id=user_id)
+            if row is None:
                 await update.message.reply_text(
-                    "✅ No extra reminder candidate is available right now."
+                    "✅ Your review queue is empty. Log a problem with /log."
                 )
                 return
-            candidate = selected[0]
-            marked = mark_review_requested(
-                conn,
-                user_id=user_id,
-                user_problem_id=candidate.user_problem_id,
-                requested_at=now_iso,
-            )
-            if marked:
-                conn.commit()
+            candidate = row_to_candidate(row)
             await _reply_long_text(
                 update, "🔁 Manual Reminder\n\n" + build_reminder_message(candidate)
             )
+            mark_reviewed(
+                conn,
+                user_id=user_id,
+                user_problem_id=candidate.user_problem_id,
+                reviewed_at=now_iso,
+            )
+            mark_user_reminded(conn, user_id=user_id, now_iso=now_iso)
+            conn.commit()
             return
 
     await update.message.reply_text(_remind_usage_text())
@@ -1114,12 +1074,12 @@ async def reviewed_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         cfg.db_path, telegram_user_id, display_id
     )
     if user_problem_id is None:
-        await update.message.reply_text("⚠️ Unknown problem id. Run /list or /due again.")
+        await update.message.reply_text("⚠️ Unknown problem id. Run /list to look it up.")
         return
     ok = complete_review(cfg.db_path, telegram_user_id, user_problem_id)
     if not ok:
         await update.message.reply_text(
-            "⚠️ Could not mark this problem as reviewed. Run /due or /list again."
+            "⚠️ Could not mark this problem as reviewed. Run /list to look it up."
         )
         return
     await update.message.reply_text(f"✅ Marked reviewed: P{display_id}")
@@ -1619,7 +1579,6 @@ def build_application(config: AppConfig) -> Application:
     app.add_handler(CommandHandler("ask", ask_command))
     app.add_handler(log_flow)
     app.add_handler(edit_flow)
-    app.add_handler(CommandHandler("due", due_command))
     app.add_handler(CommandHandler(["remind", "reminder"], remind_command))
     app.add_handler(
         CommandHandler(["reminder_count", "remindercount"], reminder_count_alias_command)

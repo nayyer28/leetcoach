@@ -9,7 +9,6 @@ import dateparser
 
 from leetcoach.app.application.shared.patterns import roadmap_pattern_info
 from leetcoach.app.application.quiz.common import AnswerQuizResult, QuizQuestionPayload
-from leetcoach.app.application.reviews.due_reviews import DueReviewItem
 
 
 TELEGRAM_MESSAGE_CHUNK_SIZE = 3500
@@ -129,10 +128,8 @@ def commands_help_text() -> str:
         "💬 <b>Ask</b>\n"
         "• /ask &lt;question&gt;\n\n"
         "⏰ <b>Review</b>\n"
-        "• /due\n"
         "• /reviewed P1\n\n"
         "• /remind\n"
-        "• /remind last\n"
         "• /remind new\n"
         "• /remind stop\n"
         "• /remind start\n"
@@ -159,7 +156,6 @@ def unknown_text_help_text() -> str:
         "• /hi\n"
         "• /ask <question>\n"
         "• /log\n"
-        "• /due\n"
         "• /remind\n"
         "• /reviewed <id>\n"
         "• /list\n"
@@ -179,7 +175,6 @@ def unknown_command_help_text(command_text: str) -> str:
         "• /hi\n"
         "• /ask <question>\n"
         "• /log\n"
-        "• /due\n"
         "• /remind\n"
         "• /reviewed <id>\n"
         "• /list\n"
@@ -314,37 +309,6 @@ def extract_problem_slug(raw_value: str, *, provider: str) -> str | None:
     return None
 
 
-def render_due(items: list[DueReviewItem], timezone_name: str) -> str:
-    lines: list[str] = ["⏰ <b>Due Reviews</b>", ""]
-    for idx, item in enumerate(items, start=1):
-        lines.append(f"{idx}. {_code(item.problem_ref)} {escape(item.title)}")
-        lines.append(
-            f"   {_bold('First attempt:')} {escape(format_timestamp_compact(item.solved_at, timezone_name))}"
-        )
-        lines.append(f"   {_bold('Reviews completed:')} {item.review_count}")
-        lines.append(
-            f"   {_bold('Outstanding since:')} "
-            + escape(format_timestamp_compact(item.requested_at, timezone_name))
-        )
-        if item.last_reviewed_at:
-            lines.append(
-                f"   {_bold('Last reviewed:')} "
-                + escape(format_timestamp_compact(item.last_reviewed_at, timezone_name))
-            )
-        lc = leetcode_url(item.leetcode_slug)
-        if lc:
-            lines.append(f"   {_bold('LC:')} {_link('Open LeetCode', lc)}")
-        nc = neetcode_url(item.neetcode_slug)
-        if nc:
-            lines.append(f"   {_bold('NC:')} {_link('Open NeetCode', nc)}")
-        lines.append("")
-    if lines and not lines[-1]:
-        lines.pop()
-    lines.append("")
-    lines.append(f"Use {_code('/reviewed P1')}")
-    return "\n".join(lines)
-
-
 def render_remind_settings(
     *,
     custom_count: int | None,
@@ -375,30 +339,28 @@ def render_remind_settings(
             ),
             "",
             (
-                f"{_bold('Commands:')} /remind last, /remind new, /remind stop, "
+                f"{_bold('Commands:')} /remind new, /remind stop, "
                 f"/remind start, /remind count &lt;n&gt;, /remind time &lt;hour&gt;"
             ),
         ]
     )
 
 
-def render_last_batch(batch: list[object], timezone_name: str, row_to_candidate) -> str:
-    sent_at = str(batch[0]["last_review_requested_at"])
+def render_next_review(candidate, timezone_name: str) -> str:
     lines = [
-        "🕘 <b>Last Reminder Batch</b>",
-        f"{_bold('Sent at:')} {escape(format_timestamp(sent_at, timezone_name))}",
-        "",
+        "⏰ <b>Next Review</b>",
+        f"{_code(candidate.problem_ref)} {escape(candidate.title)}",
+        f"{_bold('First attempt:')} {escape(format_timestamp_compact(candidate.solved_at, timezone_name))}",
+        f"{_bold('Reviews completed:')} {candidate.review_count}",
     ]
-    for index, row in enumerate(batch, start=1):
-        candidate = row_to_candidate(row)
-        lines.append(f"{index}. {_code(candidate.problem_ref)} {escape(candidate.title)}")
-        lines.append(f"   {_bold('Reviews completed:')} {candidate.review_count}")
-        lc = leetcode_url(candidate.leetcode_slug)
-        if lc:
-            lines.append(f"   {_bold('LC:')} {_link('Open LeetCode', lc)}")
-        nc = neetcode_url(candidate.neetcode_slug)
-        if nc:
-            lines.append(f"   {_bold('NC:')} {_link('Open NeetCode', nc)}")
+    lc = leetcode_url(candidate.leetcode_slug)
+    if lc:
+        lines.append(f"{_bold('LC:')} {_link('Open LeetCode', lc)}")
+    nc = neetcode_url(candidate.neetcode_slug)
+    if nc:
+        lines.append(f"{_bold('NC:')} {_link('Open NeetCode', nc)}")
+    lines.append("")
+    lines.append(f"Use {_code('/reviewed ' + candidate.problem_ref)} when done.")
     return "\n".join(lines)
 
 
@@ -406,7 +368,6 @@ def remind_usage_text() -> str:
     return (
         "Usage:\n"
         "/remind\n"
-        "/remind last\n"
         "/remind new\n"
         "/remind stop\n"
         "/remind start\n"

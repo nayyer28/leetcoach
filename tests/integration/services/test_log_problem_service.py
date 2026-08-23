@@ -49,7 +49,7 @@ class LogProblemServiceIntegrationTest(unittest.TestCase):
                 ).fetchone()[0]
                 queue_state = conn.execute(
                     """
-                    SELECT queue_position, review_count, last_review_requested_at, last_reviewed_at
+                    SELECT review_count, entered_at, solved_at
                     FROM user_problems
                     """
                 ).fetchone()
@@ -58,10 +58,10 @@ class LogProblemServiceIntegrationTest(unittest.TestCase):
             self.assertEqual(problems_count, 1)
             self.assertEqual(user_problems_count, 1)
             self.assertIsNotNone(queue_state)
-            self.assertGreater(int(queue_state[0]), 0)
-            self.assertEqual(int(queue_state[1]), 0)
-            self.assertIsNone(queue_state[2])
-            self.assertIsNone(queue_state[3])
+            # New rows start at bucket 0 with entered_at stamped at INSERT time.
+            self.assertEqual(int(queue_state[0]), 0)
+            self.assertIsNotNone(queue_state[1])
+            self.assertEqual(queue_state[2], "2026-03-02T10:00:00+00:00")
 
 
 if __name__ == "__main__":

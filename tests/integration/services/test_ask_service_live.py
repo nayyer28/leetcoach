@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from datetime import UTC, datetime
-import sqlite3
-import tempfile
 import unittest
 
 from leetcoach.app.application.ask.ask_service import ask_question
@@ -14,6 +11,9 @@ from leetcoach.app.infrastructure.llm.gemini_provider import (
     GeminiProvider,
 )
 from leetcoach.app.misc.migrate import migrate_database
+
+
+import tempfile
 
 
 @unittest.skipUnless(
@@ -31,39 +31,41 @@ class AskServiceLiveIntegrationTest(unittest.TestCase):
             max_transient_retries=1,
         )
 
+    def _seed_two_problems(self, db_path: str) -> None:
+        log_problem(
+            db_path,
+            LogProblemInput(
+                telegram_user_id="u-1",
+                telegram_chat_id="chat-1",
+                timezone="Europe/Berlin",
+                title="Maximum Depth of Binary Tree",
+                difficulty="easy",
+                leetcode_slug="maximum-depth-of-binary-tree",
+                neetcode_slug="max-depth-of-binary-tree",
+                pattern="tree dfs",
+                solved_at="2026-03-01T08:00:00+00:00",
+            ),
+        )
+        log_problem(
+            db_path,
+            LogProblemInput(
+                telegram_user_id="u-1",
+                telegram_chat_id="chat-1",
+                timezone="Europe/Berlin",
+                title="Contains Duplicate",
+                difficulty="easy",
+                leetcode_slug="contains-duplicate",
+                neetcode_slug="contains-duplicate",
+                pattern="arrays and hashing",
+                solved_at="2026-03-02T08:00:00+00:00",
+            ),
+        )
+
     def test_live_ask_uses_aggregate_tool_for_filtered_count(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "leetcoach-test.db")
             migrate_database(db_path)
-
-            log_problem(
-                db_path,
-                LogProblemInput(
-                    telegram_user_id="u-1",
-                    telegram_chat_id="chat-1",
-                    timezone="Europe/Berlin",
-                    title="Maximum Depth of Binary Tree",
-                    difficulty="easy",
-                    leetcode_slug="maximum-depth-of-binary-tree",
-                    neetcode_slug="max-depth-of-binary-tree",
-                    pattern="tree dfs",
-                    solved_at="2026-03-01T08:00:00+00:00",
-                ),
-            )
-            log_problem(
-                db_path,
-                LogProblemInput(
-                    telegram_user_id="u-1",
-                    telegram_chat_id="chat-1",
-                    timezone="Europe/Berlin",
-                    title="Contains Duplicate",
-                    difficulty="easy",
-                    leetcode_slug="contains-duplicate",
-                    neetcode_slug="contains-duplicate",
-                    pattern="arrays and hashing",
-                    solved_at="2026-03-02T08:00:00+00:00",
-                ),
-            )
+            self._seed_two_problems(db_path)
 
             try:
                 result = ask_question(
@@ -87,21 +89,7 @@ class AskServiceLiveIntegrationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "leetcoach-test.db")
             migrate_database(db_path)
-
-            log_problem(
-                db_path,
-                LogProblemInput(
-                    telegram_user_id="u-1",
-                    telegram_chat_id="chat-1",
-                    timezone="Europe/Berlin",
-                    title="Maximum Depth of Binary Tree",
-                    difficulty="easy",
-                    leetcode_slug="maximum-depth-of-binary-tree",
-                    neetcode_slug="max-depth-of-binary-tree",
-                    pattern="tree dfs",
-                    solved_at="2026-03-01T08:00:00+00:00",
-                ),
-            )
+            self._seed_two_problems(db_path)
 
             try:
                 result = ask_question(
@@ -127,41 +115,13 @@ class AskServiceLiveIntegrationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "leetcoach-test.db")
             migrate_database(db_path)
-
-            log_problem(
-                db_path,
-                LogProblemInput(
-                    telegram_user_id="u-1",
-                    telegram_chat_id="chat-1",
-                    timezone="Europe/Berlin",
-                    title="Maximum Depth of Binary Tree",
-                    difficulty="easy",
-                    leetcode_slug="maximum-depth-of-binary-tree",
-                    neetcode_slug="max-depth-of-binary-tree",
-                    pattern="trees",
-                    solved_at="2026-02-01T08:00:00+00:00",
-                ),
-            )
-            log_problem(
-                db_path,
-                LogProblemInput(
-                    telegram_user_id="u-1",
-                    telegram_chat_id="chat-1",
-                    timezone="Europe/Berlin",
-                    title="Contains Duplicate",
-                    difficulty="easy",
-                    leetcode_slug="contains-duplicate",
-                    neetcode_slug="contains-duplicate",
-                    pattern="arrays and hashing",
-                    solved_at="2026-02-02T08:00:00+00:00",
-                ),
-            )
+            self._seed_two_problems(db_path)
 
             try:
                 result = ask_question(
                     db_path=db_path,
                     telegram_user_id="u-1",
-                    question="Show me all problems I solved in Feb 2026",
+                    question="Show me all problems I solved in March 2026",
                     provider=self.provider,
                 )
             except GeminiAllModelsFailed as exc:
@@ -173,43 +133,19 @@ class AskServiceLiveIntegrationTest(unittest.TestCase):
             self.assertGreaterEqual(len(result.tool_executions), 1)
             self.assertEqual(result.tool_executions[0].tool_name, "query_user_problems")
             self.assertEqual(len(result.tool_executions[0].result["problems"]), 2)
-            self.assertIn("feb", result.answer.lower())
+            self.assertIn("march", result.answer.lower())
 
-    def test_live_ask_can_fetch_due_reviews(self) -> None:
+    def test_live_ask_can_fetch_next_review(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "leetcoach-test.db")
             migrate_database(db_path)
-
-            log_problem(
-                db_path,
-                LogProblemInput(
-                    telegram_user_id="u-1",
-                    telegram_chat_id="chat-1",
-                    timezone="Europe/Berlin",
-                    title="Maximum Depth of Binary Tree",
-                    difficulty="easy",
-                    leetcode_slug="maximum-depth-of-binary-tree",
-                    neetcode_slug="max-depth-of-binary-tree",
-                    pattern="tree dfs",
-                    solved_at="2026-03-01T08:00:00+00:00",
-                ),
-            )
-            with sqlite3.connect(db_path) as conn:
-                conn.execute(
-                    """
-                    UPDATE user_problems
-                    SET last_review_requested_at = ?
-                    WHERE user_id = (SELECT id FROM users WHERE telegram_user_id = ?)
-                    """,
-                    (datetime.now(UTC).isoformat(), "u-1"),
-                )
-                conn.commit()
+            self._seed_two_problems(db_path)
 
             try:
                 result = ask_question(
                     db_path=db_path,
                     telegram_user_id="u-1",
-                    question="What is due right now?",
+                    question="What should I review next?",
                     provider=self.provider,
                 )
             except GeminiAllModelsFailed as exc:
@@ -219,60 +155,11 @@ class AskServiceLiveIntegrationTest(unittest.TestCase):
 
             self.assertTrue(result.answer.strip())
             self.assertGreaterEqual(len(result.tool_executions), 1)
-            self.assertEqual(result.tool_executions[0].tool_name, "get_due_reviews")
-            self.assertEqual(len(result.tool_executions[0].result["reviews"]), 1)
-            self.assertIn("due", result.answer.lower())
-
-    def test_live_ask_can_fetch_last_reminder_batch(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = str(Path(tmp) / "leetcoach-test.db")
-            migrate_database(db_path)
-
-            log_problem(
-                db_path,
-                LogProblemInput(
-                    telegram_user_id="u-1",
-                    telegram_chat_id="chat-1",
-                    timezone="Europe/Berlin",
-                    title="Maximum Depth of Binary Tree",
-                    difficulty="easy",
-                    leetcode_slug="maximum-depth-of-binary-tree",
-                    neetcode_slug="max-depth-of-binary-tree",
-                    pattern="tree dfs",
-                    solved_at="2026-03-01T08:00:00+00:00",
-                ),
-            )
-            requested_at = datetime.now(UTC).isoformat()
-            with sqlite3.connect(db_path) as conn:
-                conn.execute(
-                    """
-                    UPDATE user_problems
-                    SET last_review_requested_at = ?
-                    WHERE user_id = (SELECT id FROM users WHERE telegram_user_id = ?)
-                    """,
-                    (requested_at, "u-1"),
-                )
-                conn.commit()
-
-            try:
-                result = ask_question(
-                    db_path=db_path,
-                    telegram_user_id="u-1",
-                    question="What did you remind me last?",
-                    provider=self.provider,
-                )
-            except GeminiAllModelsFailed as exc:
-                if "network error" in str(exc).lower():
-                    self.skipTest(f"Live ask test skipped due to network issue: {exc}")
-                raise
-
-            self.assertTrue(result.answer.strip())
-            self.assertGreaterEqual(len(result.tool_executions), 1)
-            self.assertEqual(
-                result.tool_executions[0].tool_name, "get_last_reminder_batch"
-            )
-            self.assertEqual(len(result.tool_executions[0].result["reviews"]), 1)
-            self.assertIn("reminder", result.answer.lower())
+            self.assertEqual(result.tool_executions[0].tool_name, "get_next_review")
+            next_review = result.tool_executions[0].result["next_review"]
+            self.assertIsNotNone(next_review)
+            # Earliest entered_at (== solved_at at insert) wins the tie in bucket 0.
+            self.assertEqual(next_review["problem_ref"], "P1")
 
 
 if __name__ == "__main__":

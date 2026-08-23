@@ -66,7 +66,7 @@ def test_command(suite: str, target: str | None) -> None:
       lch test
       lch test unit
       lch test integration
-      lch test unit tests.unit.dao.test_problem_reviews_dao
+      lch test unit tests.unit.dao.test_review_queue_dao
     """
     cmd_prefix = [sys.executable, "-W", "ignore::ResourceWarning", "-m", "unittest"]
     if target:

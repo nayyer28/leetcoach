@@ -214,7 +214,7 @@ class CliUnitTest(unittest.TestCase):
 
         result = runner.invoke(
             cli,
-            ["test", "unit", "tests.unit.dao.test_problem_reviews_dao"],
+            ["test", "unit", "tests.unit.dao.test_review_queue_dao"],
         )
 
         self.assertEqual(result.exit_code, 0)
@@ -226,7 +226,7 @@ class CliUnitTest(unittest.TestCase):
                 "-m",
                 "unittest",
                 "-v",
-                "tests.unit.dao.test_problem_reviews_dao",
+                "tests.unit.dao.test_review_queue_dao",
             ],
             check=False,
         )

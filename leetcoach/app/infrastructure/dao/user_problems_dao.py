@@ -61,15 +61,9 @@ def upsert_user_problem(
     notes: str | None,
     now_iso: str,
 ) -> int:
-    row = conn.execute(
-        """
-        SELECT COALESCE(MAX(queue_position), 0) AS max_position
-        FROM user_problems
-        WHERE user_id = ?
-        """,
-        (user_id,),
-    ).fetchone()
-    next_queue_position = int(row["max_position"]) + 10 if row is not None else 10
+    # New rows enter the top of the queue (review_count=0, entered_at=now).
+    # Re-logging the same problem must NOT reset its bucket or reshuffle its
+    # position — pattern/notes/etc. update, but review_count and entered_at stay.
     conn.execute(
         """
         INSERT INTO user_problems (
@@ -82,10 +76,11 @@ def upsert_user_problem(
             time_complexity,
             space_complexity,
             notes,
-            queue_position,
+            review_count,
+            entered_at,
             created_at,
             updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
         ON CONFLICT(user_id, problem_id) DO UPDATE SET
             pattern = excluded.pattern,
             solved_at = excluded.solved_at,
@@ -105,7 +100,7 @@ def upsert_user_problem(
             time_complexity,
             space_complexity,
             notes,
-            next_queue_position,
+            now_iso,
             now_iso,
             now_iso,
         ),

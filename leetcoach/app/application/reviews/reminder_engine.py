@@ -13,10 +13,10 @@ from leetcoach.app.application.problems.problem_refs import format_problem_ref
 from leetcoach.app.infrastructure.config.app_config import AppConfig
 from leetcoach.app.infrastructure.config.db import get_connection
 from leetcoach.app.infrastructure.dao.review_queue_dao import (
-    get_last_review_requested_at_for_user,
     list_next_review_candidates_for_scheduler,
-    mark_review_requested,
+    mark_reviewed,
 )
+from leetcoach.app.infrastructure.dao.users_dao import mark_user_reminded
 
 
 LOGGER = logging.getLogger("leetcoach.scheduler")
@@ -28,10 +28,8 @@ class ReminderCandidate:
     display_id: int
     problem_ref: str
     user_id: int
-    queue_position: int
-    last_review_requested_at: str | None
-    last_reviewed_at: str | None
     review_count: int
+    entered_at: str
     solved_at: str
     title: str
     leetcode_slug: str | None
@@ -40,6 +38,7 @@ class ReminderCandidate:
     timezone: str
     reminder_daily_max: int | None
     reminder_hour_local: int | None
+    last_reminded_at: str | None
 
 
 @dataclass(frozen=True)
@@ -49,9 +48,6 @@ class ReminderRunStats:
     skipped_already_reminded_today: int
     skipped_outside_send_hour: int
     failed: int
-    due_and_unsent: int
-    selected: int
-    header_sent: int
 
 
 @dataclass(frozen=True)
@@ -78,31 +74,12 @@ def _local_date(iso_ts: str, timezone_name: str) -> date:
     return _parse_iso(iso_ts).astimezone(_resolve_timezone(timezone_name)).date()
 
 
-def should_send_today(candidate: ReminderCandidate, now_iso: str) -> bool:
-    if not candidate.last_review_requested_at:
-        return True
-    return _local_date(candidate.last_review_requested_at, candidate.timezone) < _local_date(
-        now_iso, candidate.timezone
-    )
-
-
-def was_group_reminded_today(
-    candidates: list[ReminderCandidate], now_iso: str, timezone_name: str
-) -> bool:
-    today = _local_date(now_iso, timezone_name)
-    return any(
-        candidate.last_review_requested_at
-        and _local_date(candidate.last_review_requested_at, timezone_name) == today
-        for candidate in candidates
-    )
-
-
 def was_user_reminded_today(
-    *, last_requested_at: str | None, now_iso: str, timezone_name: str
+    *, last_reminded_at: str | None, now_iso: str, timezone_name: str
 ) -> bool:
-    if not last_requested_at:
+    if not last_reminded_at:
         return False
-    return _local_date(last_requested_at, timezone_name) == _local_date(
+    return _local_date(last_reminded_at, timezone_name) == _local_date(
         now_iso, timezone_name
     )
 
@@ -138,22 +115,14 @@ def build_reminder_message(candidate: ReminderCandidate) -> str:
         f"First attempt: {_format_compact(candidate.solved_at, candidate.timezone)}",
         f"Reviews completed: {candidate.review_count}",
     ]
-    if candidate.last_reviewed_at:
-        lines.append(
-            f"Last reviewed: {_format_compact(candidate.last_reviewed_at, candidate.timezone)}"
-        )
     lc = _leetcode_url(candidate.leetcode_slug)
     if lc:
         lines.append(f"🔗 LC: {lc}")
     nc = _neetcode_url(candidate.neetcode_slug)
     if nc:
         lines.append(f"🔗 NC: {nc}")
-    lines.append("Use /due, then /reviewed <id>")
+    lines.append("Use /reviewed <id>")
     return "\n".join(lines)
-
-
-def build_daily_header_message() -> str:
-    return ""
 
 
 def row_to_candidate(row: sqlite3.Row) -> ReminderCandidate:
@@ -162,16 +131,8 @@ def row_to_candidate(row: sqlite3.Row) -> ReminderCandidate:
         display_id=int(row["display_id"]),
         problem_ref=format_problem_ref(int(row["display_id"])),
         user_id=int(row["user_id"]) if row["user_id"] is not None else 0,
-        queue_position=int(row["queue_position"]),
-        last_review_requested_at=(
-            str(row["last_review_requested_at"])
-            if row["last_review_requested_at"]
-            else None
-        ),
-        last_reviewed_at=(
-            str(row["last_reviewed_at"]) if row["last_reviewed_at"] else None
-        ),
         review_count=int(row["review_count"]),
+        entered_at=str(row["entered_at"]),
         solved_at=str(row["solved_at"]),
         title=str(row["title"]),
         leetcode_slug=(str(row["leetcode_slug"]) if row["leetcode_slug"] else None),
@@ -186,15 +147,10 @@ def row_to_candidate(row: sqlite3.Row) -> ReminderCandidate:
             if row["reminder_hour_local"] is not None
             else None
         ),
+        last_reminded_at=(
+            str(row["last_reminded_at"]) if row["last_reminded_at"] else None
+        ),
     )
-
-
-def select_candidates_for_batch(
-    candidates: list[ReminderCandidate], *, now_iso: str, daily_max: int
-) -> list[ReminderCandidate]:
-    eligible = [candidate for candidate in candidates if should_send_today(candidate, now_iso)]
-    eligible.sort(key=lambda item: item.queue_position)
-    return eligible[:daily_max]
 
 
 def _required_tables_exist(conn: sqlite3.Connection) -> tuple[bool, tuple[str, ...]]:
@@ -278,126 +234,65 @@ def run_scheduler_once(
 
     now = now_iso or datetime.now(UTC).isoformat()
     with get_connection(config.db_path) as conn:
+        # One row per user: the top of that user's priority queue. Users with no
+        # problems or reminders_paused=1 are absent.
         rows = list_next_review_candidates_for_scheduler(conn)
         candidates = [row_to_candidate(r) for r in rows]
 
         sent = 0
-        skipped = 0
+        skipped_already_reminded = 0
         skipped_hour = 0
         failed = 0
-        due_and_unsent_total = 0
-        selected_total = 0
-        header_sent = 0
 
-        by_chat: dict[tuple[int, str, str, int | None, int | None], list[ReminderCandidate]] = {}
-        for c in candidates:
-            by_chat.setdefault(
-                (
-                    c.user_id,
-                    c.telegram_chat_id,
-                    c.timezone,
-                    c.reminder_daily_max,
-                    c.reminder_hour_local,
-                ),
-                [],
-            ).append(c)
-
-        for (user_id, chat_id, timezone, reminder_daily_max, reminder_hour_local), group in by_chat.items():
+        for candidate in candidates:
             effective_reminder_hour = (
-                reminder_hour_local
-                if reminder_hour_local is not None
+                candidate.reminder_hour_local
+                if candidate.reminder_hour_local is not None
                 else config.reminder_hour_local
             )
-            if not _is_send_hour(timezone, now, effective_reminder_hour):
-                skipped_hour += len(group)
+            if not _is_send_hour(candidate.timezone, now, effective_reminder_hour):
+                skipped_hour += 1
                 continue
 
-            last_requested_at = get_last_review_requested_at_for_user(
-                conn, user_id=user_id
-            )
             if was_user_reminded_today(
-                last_requested_at=last_requested_at,
+                last_reminded_at=candidate.last_reminded_at,
                 now_iso=now,
-                timezone_name=timezone,
+                timezone_name=candidate.timezone,
             ):
-                skipped += len(group)
+                skipped_already_reminded += 1
                 continue
 
-            selectable = [c for c in group if should_send_today(c, now)]
-            due_and_unsent_total += len(selectable)
-            skipped += len(group) - len(selectable)
-            if not selectable:
-                continue
-
-            effective_daily_max = reminder_daily_max or config.reminder_daily_max
-            selected = select_candidates_for_batch(
-                group, now_iso=now, daily_max=effective_daily_max
+            text = build_reminder_message(candidate)
+            ok, detail = _send_telegram_message(
+                config.telegram_bot_token, candidate.telegram_chat_id, text
             )
-
-            if not selected:
+            if not ok:
+                failed += 1
+                LOGGER.error(
+                    "Reminder send failed (user_problem_id=%s, chat_id=%s): %s",
+                    candidate.user_problem_id,
+                    candidate.telegram_chat_id,
+                    detail,
+                )
                 continue
-            selected_total += len(selected)
 
-            LOGGER.info(
-                "[scheduler.chat] %s",
-                json.dumps(
-                    {
-                        "chat_id": chat_id,
-                        "timezone": timezone,
-                        "reminder_daily_max": effective_daily_max,
-                        "reminder_hour_local": effective_reminder_hour,
-                        "group_size": len(group),
-                        "due_and_unsent": len(selectable),
-                        "selected": len(selected),
-                    },
-                    sort_keys=True,
-                ),
+            # Scheduler-sent reminder counts as a review: bump the bucket. Also stamp
+            # users.last_reminded_at so we don't double-send today.
+            marked = mark_reviewed(
+                conn,
+                user_id=candidate.user_id,
+                user_problem_id=candidate.user_problem_id,
+                reviewed_at=now,
             )
-
-            header_text = build_daily_header_message().strip()
-            if header_text:
-                header_ok, header_detail = _send_telegram_message(
-                    config.telegram_bot_token, chat_id, header_text
-                )
-                if not header_ok:
-                    failed += 1
-                    LOGGER.error(
-                        "Reminder header send failed (chat_id=%s): %s",
-                        chat_id,
-                        header_detail,
+            mark_user_reminded(conn, user_id=candidate.user_id, now_iso=now)
+            if marked:
+                sent += 1
+                if progress:
+                    progress(
+                        f"[scheduler] sent user_problem_id={candidate.user_problem_id}"
                     )
-                    continue
-                header_sent += 1
-
-            for candidate in selected:
-                text = build_reminder_message(candidate)
-                ok, detail = _send_telegram_message(
-                    config.telegram_bot_token, candidate.telegram_chat_id, text
-                )
-                if not ok:
-                    failed += 1
-                    LOGGER.error(
-                        "Reminder send failed (user_problem_id=%s, chat_id=%s): %s",
-                        candidate.user_problem_id,
-                        candidate.telegram_chat_id,
-                        detail,
-                    )
-                    continue
-
-                marked = mark_review_requested(
-                    conn,
-                    user_id=candidate.user_id,
-                    user_problem_id=candidate.user_problem_id,
-                    requested_at=now,
-                )
-                if marked:
-                    sent += 1
-                    if progress:
-                        progress(
-                            f"[scheduler] sent user_problem_id={candidate.user_problem_id}"
-                        )
-                else:
-                    failed += 1
+            else:
+                failed += 1
 
         conn.commit()
     LOGGER.info(
@@ -405,11 +300,8 @@ def run_scheduler_once(
         json.dumps(
             {
                 "scanned": len(candidates),
-                "due_and_unsent": due_and_unsent_total,
-                "selected": selected_total,
-                "header_sent": header_sent,
                 "sent": sent,
-                "skipped_already_reminded_today": skipped,
+                "skipped_already_reminded_today": skipped_already_reminded,
                 "skipped_outside_send_hour": skipped_hour,
                 "failed": failed,
             },
@@ -419,12 +311,9 @@ def run_scheduler_once(
     return ReminderRunStats(
         scanned=len(candidates),
         sent=sent,
-        skipped_already_reminded_today=skipped,
+        skipped_already_reminded_today=skipped_already_reminded,
         skipped_outside_send_hour=skipped_hour,
         failed=failed,
-        due_and_unsent=due_and_unsent_total,
-        selected=selected_total,
-        header_sent=header_sent,
     )
 
 

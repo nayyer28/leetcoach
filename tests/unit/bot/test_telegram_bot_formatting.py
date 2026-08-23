@@ -14,7 +14,6 @@ from leetcoach.app.application.quiz.common import (
     extract_quiz_answer_option,
     is_known_quiz_topic,
 )
-from leetcoach.app.application.reviews.due_reviews import DueReviewItem
 from leetcoach.app.interface.bot.handlers import (
     _canonical_pattern_label,
     _chunk_text,
@@ -32,7 +31,6 @@ from leetcoach.app.interface.bot.handlers import (
     _pattern_inline_markup,
     _unknown_text_help_text,
     _render_problem_detail,
-    _render_due,
     _render_quiz_question,
     _render_quiz_reveal,
     _render_problem_rows,
@@ -190,6 +188,10 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
         self.assertNotIn("/edit P1 lc", help_text)
         self.assertIn("• /ask &lt;question&gt;", help_text)
 
+    def test_commands_help_text_omits_deleted_due_command(self) -> None:
+        help_text = _commands_help_text()
+        self.assertNotIn("/due", help_text)
+
     def test_user_allowlist_behavior(self) -> None:
         open_cfg = AppConfig(
             environment="development",
@@ -332,90 +334,6 @@ class TelegramBotFormattingUnitTest(unittest.TestCase):
 
         self.assertNotIn("Matched on:", text)
         self.assertIn("<i>Medium • Backtracking • <b>28</b> Mar 21:08 CET</i>", text)
-
-    def test_render_due_includes_header_token_and_human_time(self) -> None:
-        items = [
-            DueReviewItem(
-                user_problem_id=10,
-                display_id=1,
-                problem_ref="P1",
-                title="Validate Binary Search Tree",
-                leetcode_slug="validate-binary-search-tree",
-                neetcode_slug="valid-binary-search-tree",
-                solved_at="2026-03-08T13:28:44+00:00",
-                review_count=2,
-                requested_at="2026-03-15T13:28:44+00:00",
-                last_reviewed_at="2026-03-10T13:28:44+00:00",
-                status="pending",
-            )
-        ]
-        text = _render_due(items, "Europe/Berlin")
-        self.assertIn("Due Reviews", text)
-        self.assertNotIn("<pre>", text)
-        self.assertIn("<code>P1</code>", text)
-        self.assertIn("First attempt", text)
-        self.assertIn("Reviews completed", text)
-        self.assertIn("15 Mar 14:28 CET", text)
-        self.assertIn(
-            "https://leetcode.com/problems/validate-binary-search-tree/description/",
-            text,
-        )
-        self.assertIn(
-            "https://neetcode.io/problems/valid-binary-search-tree/question",
-            text,
-        )
-
-    def test_render_due_preserves_due_item_order(self) -> None:
-        items = [
-            DueReviewItem(
-                user_problem_id=30,
-                display_id=3,
-                problem_ref="P3",
-                title="Pending Later",
-                leetcode_slug="l3",
-                neetcode_slug="n3",
-                solved_at="2026-03-01T10:00:00+00:00",
-                review_count=1,
-                requested_at="2026-03-12T10:00:00+00:00",
-                last_reviewed_at=None,
-                status="pending",
-            ),
-            DueReviewItem(
-                user_problem_id=20,
-                display_id=2,
-                problem_ref="P2",
-                title="Overdue Newer",
-                leetcode_slug="l2",
-                neetcode_slug="n2",
-                solved_at="2026-03-01T10:00:00+00:00",
-                review_count=0,
-                requested_at="2026-03-08T10:00:00+00:00",
-                last_reviewed_at=None,
-                status="pending",
-            ),
-            DueReviewItem(
-                user_problem_id=10,
-                display_id=1,
-                problem_ref="P1",
-                title="Overdue Older",
-                leetcode_slug="l1",
-                neetcode_slug="n1",
-                solved_at="2026-03-01T10:00:00+00:00",
-                review_count=0,
-                requested_at="2026-03-06T10:00:00+00:00",
-                last_reviewed_at=None,
-                status="pending",
-            ),
-        ]
-        text = _render_due(items, "UTC")
-        self.assertLess(
-            text.find("<code>P3</code> Pending Later"),
-            text.find("<code>P2</code> Overdue Newer"),
-        )
-        self.assertLess(
-            text.find("<code>P2</code> Overdue Newer"),
-            text.find("<code>P1</code> Overdue Older"),
-        )
 
     def test_quiz_topic_recognition(self) -> None:
         self.assertTrue(is_known_quiz_topic("dp"))

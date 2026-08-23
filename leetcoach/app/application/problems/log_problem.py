@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from leetcoach.app.application.problems.problem_refs import format_problem_ref
 from leetcoach.app.infrastructure.config.db import get_connection
 from leetcoach.app.infrastructure.dao.problems_dao import upsert_problem
-from leetcoach.app.infrastructure.dao.review_queue_dao import ensure_review_queue_state
 from leetcoach.app.infrastructure.dao.user_problems_dao import (
     get_user_problem_detail,
     upsert_user_problem,
@@ -68,12 +67,6 @@ def log_problem(db_path: str, payload: LogProblemInput) -> LogProblemResult:
             time_complexity=payload.time_complexity,
             space_complexity=payload.space_complexity,
             notes=payload.notes,
-            now_iso=now_iso,
-        )
-        ensure_review_queue_state(
-            conn,
-            user_id=user_id,
-            user_problem_id=user_problem_id,
             now_iso=now_iso,
         )
         conn.commit()
